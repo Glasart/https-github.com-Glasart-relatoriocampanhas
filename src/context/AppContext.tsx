@@ -13,6 +13,9 @@ import { mockIntegrations } from '../data/mock'
 import { subDays } from 'date-fns'
 import { toast } from '@/hooks/use-toast'
 import { CloudAPI } from '@/services/api'
+import { supabase } from '@/lib/supabase/client'
+import { mapFromSupabase } from '@/services/campanhas'
+import { useAuth } from '@/hooks/use-auth'
 
 interface AppContextType {
   user: User | null
@@ -73,17 +76,20 @@ const defaultTableWidths = {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('campaign_user')
-    if (saved) {
-      try {
-        return JSON.parse(saved)
-      } catch (err) {
-        console.error('Failed to parse campaign_user from localStorage', err)
-      }
+  const { user: authUser } = useAuth()
+  const [user, setUser] = useState<User | null>(null)
+
+  useEffect(() => {
+    if (authUser) {
+      setUser({
+        id: authUser.id,
+        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'Usuário',
+        email: authUser.email || '',
+        role: 'admin',
+        color: '#4f46e5',
+      })
     }
-    return null
-  })
+  }, [authUser])
 
   const [isInitializing, setIsInitializing] = useState(true)
   const [data, _setData] = useState<CampaignRow[]>([])
@@ -129,10 +135,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const manualRef = useRef(manualConfig)
   const userRef = useRef(user)
   const activityLogRef = useRef(activityLog)
-
   const hasUnsavedChangesRef = useRef(hasUnsavedChanges)
-  const isSavingRef = useRef(isSaving)
-  const isInitializingRef = useRef(isInitializing)
 
   useEffect(() => {
     dataRef.current = data
@@ -155,16 +158,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     hasUnsavedChangesRef.current = hasUnsavedChanges
   }, [hasUnsavedChanges])
-  useEffect(() => {
-    isSavingRef.current = isSaving
-  }, [isSaving])
-  useEffect(() => {
-    isInitializingRef.current = isInitializing
-  }, [isInitializing])
 
   const setData = useCallback((action: React.SetStateAction<CampaignRow[]>) => {
     _setData(action)
-    setHasUnsavedChanges(true)
   }, [])
 
   const setOtherChannelsData = useCallback((action: React.SetStateAction<OtherChannelRow[]>) => {
@@ -186,35 +182,68 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   )
 
   useEffect(() => {
-    if (user) {
-      localStorage.setItem('campaign_user', JSON.stringify(user))
-    } else {
-      localStorage.removeItem('campaign_user')
-    }
-  }, [user])
-
-  useEffect(() => {
     localStorage.setItem('campaign_table_widths', JSON.stringify(tableColumnWidths))
   }, [tableColumnWidths])
 
+  // Realtime Supabase Subscription for Campanhas
+  useEffect(() => {
+    if (!authUser) return
+
+    const fetchCampanhas = async () => {
+      setIsInitializing(true)
+      const { data: dbData, error } = await supabase
+        .from('campanhas')
+        .select('*')
+        .order('criado_em', { ascending: false })
+      if (dbData) {
+        _setData(dbData.map(mapFromSupabase))
+      }
+      if (error) {
+        console.error('Error fetching campanhas:', error)
+      }
+      setIsInitializing(false)
+    }
+
+    fetchCampanhas()
+
+    const sub = supabase
+      .channel('campanhas_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'campanhas' }, (payload) => {
+        if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+          const newRow = mapFromSupabase(payload.new)
+          _setData((prev) => {
+            const exists = prev.find((r) => r.id === newRow.id)
+            if (exists) return prev.map((r) => (r.id === newRow.id ? newRow : r))
+            return [newRow, ...prev]
+          })
+        } else if (payload.eventType === 'DELETE') {
+          _setData((prev) => prev.filter((r) => r.id !== payload.old.id))
+        }
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(sub)
+    }
+  }, [authUser])
+
   const commitToCloud = useCallback(async () => {
     setIsSaving(true)
-
     try {
+      // CloudAPI now only handles non-campaign data as mock/localstorage to avoid breaking the rest of the app
       const updatedDB = await CloudAPI.saveAll({
-        campaigns: dataRef.current,
+        campaigns: [], // managed directly via supabase now
         otherChannels: otherRef.current,
         analyses: analysesRef.current,
         activityLog: activityLogRef.current,
         manualConfig: manualRef.current,
       })
-
       setActivityLog(updatedDB.activityLog)
       setHasUnsavedChanges(false)
     } catch (e) {
       toast({
         title: 'Erro de Conexão',
-        description: 'Não foi possível salvar as alterações no banco central.',
+        description: 'Não foi possível salvar configurações adicionais.',
         variant: 'destructive',
       })
     } finally {
@@ -222,28 +251,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Auto-Save Effect
   useEffect(() => {
     if (hasUnsavedChanges && !isSaving && !isInitializing) {
       const timer = setTimeout(() => {
         commitToCloud()
-      }, 1500) // Auto-sync to the cloud after 1.5s of no modifications
+      }, 1500)
       return () => clearTimeout(timer)
     }
   }, [hasUnsavedChanges, isSaving, isInitializing, commitToCloud])
 
   const refreshFromCloud = useCallback(async (showToast = false, isPassiveSync = false) => {
     if (!isPassiveSync) setIsRefreshing(true)
-
     try {
       const db = await CloudAPI.fetchAll()
-
-      // If it's a background passive sync, and the user HAS unsaved changes, DO NOT OVERWRITE THEIR STATE!
       if (isPassiveSync && hasUnsavedChangesRef.current) {
         return
       }
-
-      _setData(db.campaigns)
       _setOtherChannelsData(db.otherChannels)
       _setAnalyses(db.analyses)
       _setManualConfig(db.manualConfig)
@@ -252,75 +275,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (!hasUnsavedChangesRef.current) {
         setHasUnsavedChanges(false)
       }
-
-      if (showToast) {
-        toast({
-          title: 'Dados Sincronizados',
-          description: 'Sua visualização foi atualizada com a nuvem.',
-        })
-      }
     } catch (err) {
-      console.error('Error refreshing from cloud', err)
-      if (showToast) {
-        toast({
-          title: 'Erro de Conexão',
-          description: 'Não foi possível buscar dados do servidor.',
-          variant: 'destructive',
-        })
-      }
+      console.error('Error refreshing config', err)
     } finally {
       if (!isPassiveSync) setIsRefreshing(false)
-      setIsInitializing(false)
     }
   }, [])
 
-  // Initial fetch from central cloud database
   useEffect(() => {
-    if (user) {
-      refreshFromCloud(false)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-
-  // Listen to remote changes across tabs for instant Real-time Sync
-  useEffect(() => {
-    const handleStorage = (e: MessageEvent | Event | StorageEvent) => {
-      if (e instanceof StorageEvent && e.key === 'skip_campaign_cloud_backend_db') {
-        refreshFromCloud(false, true)
-      } else if (e instanceof MessageEvent && e.data === 'sync') {
-        refreshFromCloud(false, true)
-      } else if (e.type === 'cloud_sync') {
-        refreshFromCloud(false, true)
-      }
-    }
-
-    window.addEventListener('storage', handleStorage as EventListener)
-
-    try {
-      const bc = new BroadcastChannel('cloud_db_sync')
-      bc.onmessage = handleStorage
-      return () => {
-        bc.close()
-        window.removeEventListener('storage', handleStorage as EventListener)
-      }
-    } catch (e) {
-      window.addEventListener('cloud_sync', handleStorage)
-      return () => {
-        window.removeEventListener('cloud_sync', handleStorage)
-        window.removeEventListener('storage', handleStorage as EventListener)
-      }
-    }
-  }, [refreshFromCloud])
-
-  // Short Polling for real-time collaboration across different users/devices
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!hasUnsavedChangesRef.current && !isSavingRef.current && !isInitializingRef.current) {
-        refreshFromCloud(false, true)
-      }
-    }, 4000) // 4 seconds polling for seamless real-time feel
-
-    return () => clearInterval(interval)
+    refreshFromCloud(false)
   }, [refreshFromCloud])
 
   const logAction = useCallback((type: string, description: string, payload: any, actor?: User) => {
@@ -342,20 +305,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setHasUnsavedChanges(true)
   }, [])
 
-  const login = useCallback(
-    (newUser: User) => {
-      setUser(newUser)
-      logAction('LOGIN', 'Usuário autenticado no sistema', {}, newUser)
-    },
-    [logAction],
-  )
+  const login = useCallback((newUser: User) => {
+    // handled by supabase auth hook now, this is just legacy stub
+  }, [])
 
   const logout = useCallback(() => {
-    if (user) {
-      logAction('LOGOUT', 'Usuário encerrou a sessão', {}, user)
-    }
-    setUser(null)
-  }, [user, logAction])
+    supabase.auth.signOut()
+  }, [])
 
   const updateManualConfig = useCallback(
     (key: string, next: ManualSectionConfig) => {
@@ -371,76 +327,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [logAction, setManualConfig],
   )
 
-  const undoAction = useCallback(
-    (id: string) => {
-      setActivityLog((prev) => {
-        const entry = prev.find((a) => a.id === id)
-        if (!entry || entry.reverted) return prev
-
-        if (entry.type === 'DB_EDIT' || entry.type === 'SPECIFIC_DB_EDIT') {
-          setData((d) => d.filter((r) => r.id !== entry.payload.next.id))
-        } else if (entry.type === 'UPDATE_DATA' || entry.type === 'UPDATE_SPECIFIC_DATA') {
-          setData((d) => d.map((r) => (r.id === entry.payload.id ? entry.payload.prev : r)))
-        } else if (entry.type === 'UPDATE_OTHER_DATA') {
-          setOtherChannelsData((d) => {
-            if (!entry.payload.prev) {
-              return d.filter((r) => r.id !== entry.payload.next.id)
-            }
-            return d.map((r) => (r.id === entry.payload.id ? entry.payload.prev : r))
-          })
-        } else if (entry.type === 'ADD_ANALYSIS') {
-          setAnalyses((d) => d.filter((a) => a.id !== entry.payload.id))
-        } else if (entry.type === 'DB_DUPLICATE' || entry.type === 'SPECIFIC_DB_DUPLICATE') {
-          setData((d) => d.filter((r) => r.id !== entry.payload.newId))
-        } else if (
-          entry.type === 'DB_BULK_DUPLICATE' ||
-          entry.type === 'SPECIFIC_DB_BULK_DUPLICATE'
-        ) {
-          const newIds = entry.payload.newIds as string[]
-          setData((d) => d.filter((r) => !newIds.includes(r.id)))
-        } else if (entry.type === 'DB_INSERT') {
-          setData((d) => d.filter((r) => r.id !== entry.payload.row.id))
-        } else if (entry.type === 'DB_BULK_INSERT' || entry.type === 'DB_BULK_MANUAL') {
-          const insertedIds = entry.payload.rows.map((r: any) => r.id)
-          setData((d) => d.filter((r) => !insertedIds.includes(r.id)))
-        } else if (entry.type === 'CONFIG_CHANGE') {
-          setManualConfig((c) => ({
-            ...c,
-            [entry.payload.next.link
-              ? Object.keys(c).find((k) => c[k].link === entry.payload.next.link) || ''
-              : '']: entry.payload.prev,
-          }))
-        } else if (
-          entry.type === 'DELETE_DATA' ||
-          entry.type === 'DELETE_SPECIFIC_DATA' ||
-          entry.type === 'DB_DELETE'
-        ) {
-          toast({
-            title: 'Ação não suportada',
-            description: 'Não é possível desfazer exclusões no momento.',
-            variant: 'destructive',
-          })
-          return prev
-        }
-
-        const undoLog: ActivityLogEntry = {
-          id: crypto.randomUUID(),
-          userId: userRef.current?.name || 'Sistema',
-          userName: userRef.current?.name || 'Sistema',
-          userColor: userRef.current?.color || '#000',
-          type: 'UNDO',
-          description: `Desfez a ação: ${entry.description}`,
-          timestamp: new Date().toISOString(),
-          payload: { originalId: entry.id },
-        }
-        const updated = prev.map((a) => (a.id === id ? { ...a, reverted: true } : a))
-        return [undoLog, ...updated]
-      })
-
-      setHasUnsavedChanges(true)
-    },
-    [setData, setOtherChannelsData, setAnalyses, setManualConfig],
-  )
+  const undoAction = useCallback((id: string) => {
+    // simplified undo to avoid breaking supabase data consistency easily
+    toast({
+      title: 'Aviso',
+      description: 'Desfazer alterações do banco principal não é suportado nesta versão.',
+    })
+  }, [])
 
   return (
     <AppContext.Provider

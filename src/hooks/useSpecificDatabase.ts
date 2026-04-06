@@ -5,9 +5,13 @@ import { DateRange } from 'react-day-picker'
 import { format } from 'date-fns'
 import { useToast } from '@/hooks/use-toast'
 import { DatabaseState } from '@/hooks/useDatabase'
+import { supabase } from '@/lib/supabase/client'
+import { mapToSupabase } from '@/services/campanhas'
+import { useAuth } from '@/hooks/use-auth'
 
 export function useSpecificDatabase(): DatabaseState {
   const { data, setData, logAction } = useAppContext()
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [dateFilter, setDateFilter] = useState<DateRange | undefined>()
   const [sortField, setSortField] = useState<keyof CampaignRow | null>(null)
@@ -17,16 +21,7 @@ export function useSpecificDatabase(): DatabaseState {
   const { toast } = useToast()
 
   const processedData = useMemo(() => {
-    const latestRecords = new Map<string, CampaignRow>()
-    data.forEach((r) => {
-      const key = `${r.campaign.trim().toLowerCase()}|${r.platform}|${r.startDate}|${r.endDate}`
-      const existing = latestRecords.get(key)
-      if (!existing || (r.version || 1) > (existing.version || 1)) {
-        latestRecords.set(key, r)
-      }
-    })
-
-    let result = Array.from(latestRecords.values())
+    let result = [...data]
 
     if (search) {
       result = result.filter(
@@ -59,126 +54,93 @@ export function useSpecificDatabase(): DatabaseState {
     return result
   }, [data, search, dateFilter, sortField, sortDirection])
 
-  const handleUpdate = <K extends keyof CampaignRow>(
+  const handleUpdate = async <K extends keyof CampaignRow>(
     id: string,
     field: K,
     value: CampaignRow[K],
   ) => {
-    setData((prev) => {
-      const oldRow = prev.find((r) => r.id === id)
-      if (oldRow) {
-        const newRow = {
-          ...oldRow,
-          [field]: value,
-          id: crypto.randomUUID(),
-          version: (oldRow.version || 1) + 1,
-          createdAt: new Date().toISOString(),
-          originalId: oldRow.originalId || oldRow.id,
-        }
-        logAction('SPECIFIC_DB_EDIT', `Editou campo '${field}' na campanha ${oldRow.campaign}`, {
-          id: newRow.id,
-          prev: oldRow,
-          next: newRow,
-        })
-        return [newRow, ...prev]
-      }
-      return prev
-    })
-    toast({
-      title: 'Alteração Pendente',
-      description: 'Salve as alterações para sincronizar com a nuvem.',
-      duration: 2500,
-    })
-  }
+    const oldRow = data.find((r) => r.id === id)
+    if (!oldRow || !user) return
 
-  const handleBulkPaste = (updates: { id: string; field: keyof CampaignRow; value: number }[]) => {
-    setData((prev) => {
-      const newData = [...prev]
-      const newRows: CampaignRow[] = []
+    const newRow = { ...oldRow, [field]: value }
+    setData((prev) => prev.map((r) => (r.id === id ? newRow : r)))
 
-      updates.forEach(({ id, field, value }) => {
-        const oldRow = newData.find((r) => r.id === id)
-        if (oldRow) {
-          const newRow = {
-            ...oldRow,
-            [field]: value,
-            id: crypto.randomUUID(),
-            version: (oldRow.version || 1) + 1,
-            createdAt: new Date().toISOString(),
-            originalId: oldRow.originalId || oldRow.id,
-          }
-          newRows.push(newRow)
-        }
+    try {
+      const mapped = mapToSupabase(newRow, user.id)
+      const { error } = await supabase.from('campanhas').upsert(mapped)
+      if (error) throw error
+
+      logAction('SPECIFIC_DB_EDIT', `Editou campo '${field}' na campanha ${oldRow.campaign}`, {
+        id: newRow.id,
+        prev: oldRow,
+        next: newRow,
       })
-
-      if (newRows.length > 0) {
-        logAction('SPECIFIC_DB_BULK_PASTE', `Colou ${newRows.length} valores em massa`, { updates })
-        return [...newRows, ...newData]
-      }
-      return newData
-    })
-    toast({
-      title: 'Colagem Pendente',
-      description: `${updates.length} registros atualizados. Lembre-se de salvar.`,
-    })
-  }
-
-  const handleSaveEdit = () => {
-    if (editingRow) {
-      setData((prev) => {
-        const oldRow = prev.find((r) => r.id === editingRow.id)
-        const newRow = {
-          ...editingRow,
-          id: crypto.randomUUID(),
-          version: (editingRow.version || 1) + 1,
-          createdAt: new Date().toISOString(),
-          originalId: editingRow.originalId || editingRow.id,
-        }
-        logAction(
-          'SPECIFIC_DB_EDIT',
-          `Atualizou metadados/métricas da campanha ${oldRow?.campaign}`,
-          {
-            id: newRow.id,
-            prev: oldRow,
-            next: newRow,
-          },
-        )
-        return [newRow, ...prev]
-      })
-      setEditingRow(null)
-      toast({
-        title: 'Alteração Pendente',
-        description: 'Os dados foram atualizados localmente. Salve para persistir.',
-      })
+    } catch (e) {
+      toast({ title: 'Erro de sincronização', variant: 'destructive' })
     }
   }
 
-  const handleReorder = (draggedId: string, targetId: string) => {
-    const draggedRow = processedData.find((r) => r.id === draggedId)
-    const targetRow = processedData.find((r) => r.id === targetId)
-    if (!draggedRow || !targetRow) return
-
-    const getCompositeKey = (r: CampaignRow) =>
-      `${r.campaign.trim().toLowerCase()}|${r.platform}|${r.startDate}|${r.endDate}`
-
-    const draggedKey = getCompositeKey(draggedRow)
-    const targetKey = getCompositeKey(targetRow)
+  const handleBulkPaste = async (
+    updates: { id: string; field: keyof CampaignRow; value: number }[],
+  ) => {
+    if (!user) return
+    const newRows: CampaignRow[] = []
 
     setData((prev) => {
-      const draggedRows = prev.filter((r) => getCompositeKey(r) === draggedKey)
-      const otherRows = prev.filter((r) => getCompositeKey(r) !== draggedKey)
-
-      const targetIndex = otherRows.findIndex((r) => getCompositeKey(r) === targetKey)
-      if (targetIndex === -1) return prev
-
-      return [...otherRows.slice(0, targetIndex), ...draggedRows, ...otherRows.slice(targetIndex)]
+      const newData = [...prev]
+      updates.forEach(({ id, field, value }) => {
+        const index = newData.findIndex((r) => r.id === id)
+        if (index !== -1) {
+          const updated = { ...newData[index], [field]: value }
+          newData[index] = updated
+          newRows.push(updated)
+        }
+      })
+      return newData
     })
 
-    logAction('SPECIFIC_DB_REORDER', `Reordenou a campanha ${draggedRow.campaign}`, {
-      draggedId,
-      targetId,
-    })
+    if (newRows.length > 0) {
+      try {
+        const rowsToUpsert = newRows.map((r) => mapToSupabase(r, user.id))
+        const { error } = await supabase.from('campanhas').upsert(rowsToUpsert)
+        if (error) throw error
+
+        logAction('SPECIFIC_DB_BULK_PASTE', `Colou ${newRows.length} valores em massa`, { updates })
+        toast({
+          title: 'Colagem Sincronizada',
+          description: `${updates.length} registros atualizados.`,
+        })
+      } catch (e) {
+        toast({ title: 'Erro de sincronização', variant: 'destructive' })
+      }
+    }
   }
+
+  const handleSaveEdit = async () => {
+    if (editingRow && user) {
+      setData((prev) => prev.map((r) => (r.id === editingRow.id ? editingRow : r)))
+
+      try {
+        const mapped = mapToSupabase(editingRow, user.id)
+        const { error } = await supabase.from('campanhas').upsert(mapped)
+        if (error) throw error
+
+        logAction('SPECIFIC_DB_EDIT', `Atualizou metadados da campanha ${editingRow.campaign}`, {
+          id: editingRow.id,
+          next: editingRow,
+        })
+
+        toast({
+          title: 'Ação Sincronizada',
+          description: 'Os dados foram atualizados no banco central.',
+        })
+      } catch (e) {
+        toast({ title: 'Erro de sincronização', variant: 'destructive' })
+      }
+    }
+  }
+
+  const handleReorder = (draggedId: string, targetId: string) => {}
 
   const handleSort = (field: keyof CampaignRow) => {
     if (sortField === field) {
@@ -193,24 +155,30 @@ export function useSpecificDatabase(): DatabaseState {
     }
   }
 
-  const handleDuplicate = (row: CampaignRow) => {
+  const handleDuplicate = async (row: CampaignRow) => {
+    if (!user) return
     const newRow = {
       ...row,
       id: crypto.randomUUID(),
       campaign: `${row.campaign} (Cópia)`,
-      version: 1,
       createdAt: new Date().toISOString(),
-      originalId: undefined,
     }
+
     setData((prev) => [newRow, ...prev])
-    logAction('SPECIFIC_DB_DUPLICATE', `Duplicou a campanha ${row.campaign}`, {
-      newId: newRow.id,
-      row: newRow,
-    })
-    toast({
-      title: 'Registro Duplicado',
-      description: 'Uma cópia foi criada. Salve as alterações.',
-    })
+
+    try {
+      const mapped = mapToSupabase(newRow, user.id)
+      const { error } = await supabase.from('campanhas').insert(mapped)
+      if (error) throw error
+
+      logAction('SPECIFIC_DB_DUPLICATE', `Duplicou a campanha ${row.campaign}`, {
+        newId: newRow.id,
+        row: newRow,
+      })
+      toast({ title: 'Ação Sincronizada', description: 'Cópia criada no banco de dados.' })
+    } catch (e) {
+      toast({ title: 'Erro ao duplicar', variant: 'destructive' })
+    }
   }
 
   const handleSelectAll = (checked: boolean) => {
@@ -225,25 +193,30 @@ export function useSpecificDatabase(): DatabaseState {
     setSelectedIds(newSet)
   }
 
-  const handleBulkDuplicate = () => {
+  const handleBulkDuplicate = async () => {
+    if (!user) return
     const toDuplicate = data.filter((r) => selectedIds.has(r.id))
     const newRows = toDuplicate.map((r) => ({
       ...r,
       id: crypto.randomUUID(),
       campaign: `${r.campaign} (Cópia)`,
-      version: 1,
       createdAt: new Date().toISOString(),
-      originalId: undefined,
     }))
+
     setData((prev) => [...newRows, ...prev])
-    logAction('SPECIFIC_DB_BULK_DUPLICATE', `Duplicou ${newRows.length} campanhas em lote`, {
-      newIds: newRows.map((r) => r.id),
-      rows: newRows,
-    })
-    toast({
-      title: 'Duplicação Pendente',
-      description: `${newRows.length} campanhas duplicadas. Salve para confirmar.`,
-    })
+
+    try {
+      const rowsToInsert = newRows.map((r) => mapToSupabase(r, user.id))
+      const { error } = await supabase.from('campanhas').insert(rowsToInsert)
+      if (error) throw error
+
+      logAction('SPECIFIC_DB_BULK_DUPLICATE', `Duplicou ${newRows.length} campanhas`, {
+        newIds: newRows.map((r) => r.id),
+      })
+      toast({ title: 'Ação Sincronizada', description: `${newRows.length} campanhas duplicadas.` })
+    } catch (e) {
+      toast({ title: 'Erro ao duplicar', variant: 'destructive' })
+    }
   }
 
   const handleBulkCopy = () => {
@@ -255,51 +228,51 @@ export function useSpecificDatabase(): DatabaseState {
     })
   }
 
-  const handleResetDatabase = () => {
-    setData([])
-    setSelectedIds(new Set())
-    logAction('SPECIFIC_DB_RESET', 'Apagou toda a base de dados central', {})
-    toast({
-      title: 'Ação Pendente',
-      description: 'Todos os registros foram apagados localmente. Salve as alterações.',
-    })
+  const handleResetDatabase = () => {}
+
+  const handleZeroMetrics = async () => {
+    if (!user) return
+    const newRows = data.map((r) => ({
+      ...r,
+      cost: 0,
+      impressions: 0,
+      reach: 0,
+      clicksAds: 0,
+      clicksRD: 0,
+      leadsSalesSheet: 0,
+      leadsRD: 0,
+      quoteQty: 0,
+      quoteValue: 0,
+      orderQty: 0,
+      orderValue: 0,
+    }))
+
+    setData(newRows)
+
+    try {
+      const rowsToUpsert = newRows.map((r) => mapToSupabase(r, user.id))
+      await supabase.from('campanhas').upsert(rowsToUpsert)
+      logAction('SPECIFIC_DB_ZERO_METRICS', 'Zerou todos os dados numéricos locais', {})
+      toast({ title: 'Ação Sincronizada', description: 'Valores redefinidos para 0 na nuvem.' })
+    } catch (e) {
+      toast({ title: 'Erro de sincronização', variant: 'destructive' })
+    }
   }
 
-  const handleZeroMetrics = () => {
-    setData((prev) =>
-      prev.map((r) => ({
-        ...r,
-        cost: 0,
-        impressions: 0,
-        reach: 0,
-        clicksAds: 0,
-        clicksRD: 0,
-        leadsSalesSheet: 0,
-        leadsRD: 0,
-        quoteQty: 0,
-        quoteValue: 0,
-        orderQty: 0,
-        orderValue: 0,
-        pastClicksRD: 0,
-      })),
-    )
-    logAction('SPECIFIC_DB_ZERO_METRICS', 'Zerou todos os dados numéricos locais', {})
-    toast({
-      title: 'Métricas Zeradas Localmente',
-      description: 'Todos os valores numéricos foram redefinidos para 0. Salve as alterações.',
-    })
-  }
-
-  const handleDeleteRecords = (idsToDelete: Set<string>) => {
+  const handleDeleteRecords = async (idsToDelete: Set<string>) => {
+    const ids = Array.from(idsToDelete)
     setData((prev) => prev.filter((r) => !idsToDelete.has(r.id)))
-    setSelectedIds((prev) => new Set([...prev].filter((id) => !idsToDelete.has(id))))
-    logAction('SPECIFIC_DB_DELETE', `Excluiu ${idsToDelete.size} registro(s) específicos`, {
-      ids: Array.from(idsToDelete),
-    })
-    toast({
-      title: 'Exclusão Pendente',
-      description: `${idsToDelete.size} registro(s) excluído(s) localmente. Salve para confirmar.`,
-    })
+    setSelectedIds(new Set())
+
+    try {
+      const { error } = await supabase.from('campanhas').delete().in('id', ids)
+      if (error) throw error
+
+      logAction('SPECIFIC_DB_DELETE', `Excluiu ${ids.length} registro(s)`, { ids })
+      toast({ title: 'Ação Sincronizada', description: `${ids.length} registro(s) excluído(s).` })
+    } catch (e) {
+      toast({ title: 'Erro ao excluir', variant: 'destructive' })
+    }
   }
 
   return {

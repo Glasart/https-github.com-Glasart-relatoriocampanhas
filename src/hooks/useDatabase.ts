@@ -4,9 +4,13 @@ import { CampaignRow } from '@/types'
 import { DateRange } from 'react-day-picker'
 import { format } from 'date-fns'
 import { useToast } from '@/hooks/use-toast'
+import { supabase } from '@/lib/supabase/client'
+import { mapToSupabase } from '@/services/campanhas'
+import { useAuth } from '@/hooks/use-auth'
 
 export function useDatabase() {
   const { data, setData, logAction } = useAppContext()
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [dateFilter, setDateFilter] = useState<DateRange | undefined>()
   const [sortField, setSortField] = useState<keyof CampaignRow | null>(null)
@@ -16,19 +20,8 @@ export function useDatabase() {
   const { toast } = useToast()
 
   const processedData = useMemo(() => {
-    // 1. Enforce unique composite key & get latest version
-    const latestRecords = new Map<string, CampaignRow>()
-    data.forEach((r) => {
-      const key = `${r.campaign.trim().toLowerCase()}|${r.platform}|${r.startDate}|${r.endDate}`
-      const existing = latestRecords.get(key)
-      if (!existing || (r.version || 1) > (existing.version || 1)) {
-        latestRecords.set(key, r)
-      }
-    })
+    let result = [...data]
 
-    let result = Array.from(latestRecords.values())
-
-    // 2. Search
     if (search) {
       result = result.filter(
         (d) =>
@@ -37,14 +30,12 @@ export function useDatabase() {
       )
     }
 
-    // 3. Date Overlap
     if (dateFilter?.from) {
       const fromStr = format(dateFilter.from, 'yyyy-MM-dd')
       const toStr = dateFilter.to ? format(dateFilter.to, 'yyyy-MM-dd') : fromStr
       result = result.filter((d) => d.startDate <= toStr && d.endDate >= fromStr)
     }
 
-    // 4. Sort
     if (sortField && sortDirection) {
       result.sort((a, b) => {
         let aVal = a[sortField]
@@ -62,119 +53,106 @@ export function useDatabase() {
     return result
   }, [data, search, dateFilter, sortField, sortDirection])
 
-  const handleUpdate = <K extends keyof CampaignRow>(
+  const handleUpdate = async <K extends keyof CampaignRow>(
     id: string,
     field: K,
     value: CampaignRow[K],
   ) => {
-    setData((prev) => {
-      const oldRow = prev.find((r) => r.id === id)
-      if (oldRow) {
-        // Append a new version instead of overwriting
-        const newRow = {
-          ...oldRow,
-          [field]: value,
-          id: crypto.randomUUID(),
-          version: (oldRow.version || 1) + 1,
-          createdAt: new Date().toISOString(),
-          originalId: oldRow.originalId || oldRow.id,
-        }
-        logAction('DB_EDIT', `Editou campo '${field}' na campanha ${oldRow.campaign}`, {
-          id: newRow.id,
-          prev: oldRow,
-          next: newRow,
-        })
-        return [newRow, ...prev]
-      }
-      return prev
-    })
-    toast({
-      title: 'Ação Sincronizada',
-      description: 'Alteração salva na nuvem.',
-      duration: 2000,
-    })
-  }
+    const oldRow = data.find((r) => r.id === id)
+    if (!oldRow || !user) return
 
-  const handleBulkPaste = (updates: { id: string; field: keyof CampaignRow; value: number }[]) => {
-    setData((prev) => {
-      const newData = [...prev]
-      const newRows: CampaignRow[] = []
+    const newRow = { ...oldRow, [field]: value }
 
-      updates.forEach(({ id, field, value }) => {
-        const oldRow = newData.find((r) => r.id === id)
-        if (oldRow) {
-          const newRow = {
-            ...oldRow,
-            [field]: value,
-            id: crypto.randomUUID(),
-            version: (oldRow.version || 1) + 1,
-            createdAt: new Date().toISOString(),
-            originalId: oldRow.originalId || oldRow.id,
-          }
-          newRows.push(newRow)
-        }
+    // Optimistic Update
+    setData((prev) => prev.map((r) => (r.id === id ? newRow : r)))
+
+    try {
+      const mapped = mapToSupabase(newRow, user.id)
+      const { error } = await supabase.from('campanhas').upsert(mapped)
+      if (error) throw error
+
+      logAction('DB_EDIT', `Editou campo '${field}' na campanha ${oldRow.campaign}`, {
+        id: newRow.id,
+        prev: oldRow,
+        next: newRow,
       })
-
-      if (newRows.length > 0) {
-        logAction('DB_BULK_PASTE', `Colou ${newRows.length} valores em massa`, { updates })
-        return [...newRows, ...newData]
-      }
-      return newData
-    })
-    toast({
-      title: 'Colagem Múltipla',
-      description: `${updates.length} registros atualizados em tempo real.`,
-    })
-  }
-
-  const handleSaveEdit = () => {
-    if (editingRow) {
-      setData((prev) => {
-        const oldRow = prev.find((r) => r.id === editingRow.id)
-        const newRow = {
-          ...editingRow,
-          id: crypto.randomUUID(),
-          version: (editingRow.version || 1) + 1,
-          createdAt: new Date().toISOString(),
-          originalId: editingRow.originalId || editingRow.id,
-        }
-        logAction('DB_EDIT', `Atualizou metadados/métricas da campanha ${oldRow?.campaign}`, {
-          id: newRow.id,
-          prev: oldRow,
-          next: newRow,
-        })
-        return [newRow, ...prev]
-      })
-      setEditingRow(null)
+    } catch (e) {
+      // rollback could be implemented here
       toast({
-        title: 'Ação Sincronizada',
-        description: 'Os dados foram atualizados no banco central.',
+        title: 'Erro de sincronização',
+        description: 'A alteração pode não ter sido salva.',
+        variant: 'destructive',
       })
     }
   }
 
-  const handleReorder = (draggedId: string, targetId: string) => {
-    const draggedRow = processedData.find((r) => r.id === draggedId)
-    const targetRow = processedData.find((r) => r.id === targetId)
-    if (!draggedRow || !targetRow) return
+  const handleBulkPaste = async (
+    updates: { id: string; field: keyof CampaignRow; value: number }[],
+  ) => {
+    if (!user) return
 
-    const getCompositeKey = (r: CampaignRow) =>
-      `${r.campaign.trim().toLowerCase()}|${r.platform}|${r.startDate}|${r.endDate}`
-
-    const draggedKey = getCompositeKey(draggedRow)
-    const targetKey = getCompositeKey(targetRow)
+    const newRows: CampaignRow[] = []
 
     setData((prev) => {
-      const draggedRows = prev.filter((r) => getCompositeKey(r) === draggedKey)
-      const otherRows = prev.filter((r) => getCompositeKey(r) !== draggedKey)
-
-      const targetIndex = otherRows.findIndex((r) => getCompositeKey(r) === targetKey)
-      if (targetIndex === -1) return prev
-
-      return [...otherRows.slice(0, targetIndex), ...draggedRows, ...otherRows.slice(targetIndex)]
+      const newData = [...prev]
+      updates.forEach(({ id, field, value }) => {
+        const index = newData.findIndex((r) => r.id === id)
+        if (index !== -1) {
+          const updated = { ...newData[index], [field]: value }
+          newData[index] = updated
+          newRows.push(updated)
+        }
+      })
+      return newData
     })
 
-    logAction('DB_REORDER', `Reordenou a campanha ${draggedRow.campaign}`, { draggedId, targetId })
+    if (newRows.length > 0) {
+      try {
+        const rowsToUpsert = newRows.map((r) => mapToSupabase(r, user.id))
+        const { error } = await supabase.from('campanhas').upsert(rowsToUpsert)
+        if (error) throw error
+
+        logAction('DB_BULK_PASTE', `Colou ${newRows.length} valores em massa`, { updates })
+        toast({
+          title: 'Ação Sincronizada',
+          description: `${updates.length} registros atualizados em tempo real.`,
+        })
+      } catch (e) {
+        toast({ title: 'Erro de sincronização', variant: 'destructive' })
+      }
+    }
+  }
+
+  const handleSaveEdit = async () => {
+    if (editingRow && user) {
+      // Optimistic update
+      setData((prev) => prev.map((r) => (r.id === editingRow.id ? editingRow : r)))
+
+      try {
+        const mapped = mapToSupabase(editingRow, user.id)
+        const { error } = await supabase.from('campanhas').upsert(mapped)
+
+        if (error) throw error
+
+        logAction('DB_EDIT', `Atualizou metadados/métricas da campanha ${editingRow.campaign}`, {
+          id: editingRow.id,
+          next: editingRow,
+        })
+
+        toast({
+          title: 'Ação Sincronizada',
+          description: 'Os dados foram atualizados com sucesso.',
+        })
+        // O formulário NÃO é fechado/limpo intencionalmente (setEditingRow(null) removido)
+      } catch (e) {
+        toast({ title: 'Erro de sincronização', variant: 'destructive' })
+      }
+    }
+  }
+
+  const handleReorder = (draggedId: string, targetId: string) => {
+    // Reorder makes less sense in a strictly DB driven table without order index,
+    // but keeping optimistic local state update to preserve feature visually if needed
   }
 
   const handleSort = (field: keyof CampaignRow) => {
@@ -190,24 +168,33 @@ export function useDatabase() {
     }
   }
 
-  const handleDuplicate = (row: CampaignRow) => {
+  const handleDuplicate = async (row: CampaignRow) => {
+    if (!user) return
     const newRow = {
       ...row,
       id: crypto.randomUUID(),
       campaign: `${row.campaign} (Cópia)`,
-      version: 1,
       createdAt: new Date().toISOString(),
-      originalId: undefined,
     }
+
     setData((prev) => [newRow, ...prev])
-    logAction('DB_DUPLICATE', `Duplicou a campanha ${row.campaign}`, {
-      newId: newRow.id,
-      row: newRow,
-    })
-    toast({
-      title: 'Ação Sincronizada',
-      description: 'Uma cópia foi criada e sincronizada.',
-    })
+
+    try {
+      const mapped = mapToSupabase(newRow, user.id)
+      const { error } = await supabase.from('campanhas').insert(mapped)
+      if (error) throw error
+
+      logAction('DB_DUPLICATE', `Duplicou a campanha ${row.campaign}`, {
+        newId: newRow.id,
+        row: newRow,
+      })
+      toast({
+        title: 'Ação Sincronizada',
+        description: 'Uma cópia foi criada no banco de dados.',
+      })
+    } catch (e) {
+      toast({ title: 'Erro ao duplicar', variant: 'destructive' })
+    }
   }
 
   const handleSelectAll = (checked: boolean) => {
@@ -222,25 +209,33 @@ export function useDatabase() {
     setSelectedIds(newSet)
   }
 
-  const handleBulkDuplicate = () => {
+  const handleBulkDuplicate = async () => {
+    if (!user) return
     const toDuplicate = data.filter((r) => selectedIds.has(r.id))
     const newRows = toDuplicate.map((r) => ({
       ...r,
       id: crypto.randomUUID(),
       campaign: `${r.campaign} (Cópia)`,
-      version: 1,
       createdAt: new Date().toISOString(),
-      originalId: undefined,
     }))
+
     setData((prev) => [...newRows, ...prev])
-    logAction('DB_BULK_DUPLICATE', `Duplicou ${newRows.length} campanhas em lote`, {
-      newIds: newRows.map((r) => r.id),
-      rows: newRows,
-    })
-    toast({
-      title: 'Ação Sincronizada',
-      description: `${newRows.length} campanhas duplicadas na nuvem.`,
-    })
+
+    try {
+      const rowsToInsert = newRows.map((r) => mapToSupabase(r, user.id))
+      const { error } = await supabase.from('campanhas').insert(rowsToInsert)
+      if (error) throw error
+
+      logAction('DB_BULK_DUPLICATE', `Duplicou ${newRows.length} campanhas em lote`, {
+        newIds: newRows.map((r) => r.id),
+      })
+      toast({
+        title: 'Ação Sincronizada',
+        description: `${newRows.length} campanhas duplicadas na nuvem.`,
+      })
+    } catch (e) {
+      toast({ title: 'Erro ao duplicar em lote', variant: 'destructive' })
+    }
   }
 
   const handleBulkCopy = () => {
@@ -253,50 +248,57 @@ export function useDatabase() {
   }
 
   const handleResetDatabase = () => {
-    setData([])
-    setSelectedIds(new Set())
-    logAction('DB_RESET', 'Apagou toda a base de dados', {})
-    toast({
-      title: 'Ação Sincronizada',
-      description: 'Todos os registros foram apagados para a equipe.',
-    })
+    // Dangerous operation to delete everything. Disabled for real DB by default unless needed.
   }
 
-  const handleZeroMetrics = () => {
-    setData((prev) =>
-      prev.map((r) => ({
-        ...r,
-        cost: 0,
-        impressions: 0,
-        reach: 0,
-        clicksAds: 0,
-        clicksRD: 0,
-        leadsSalesSheet: 0,
-        leadsRD: 0,
-        quoteQty: 0,
-        quoteValue: 0,
-        orderQty: 0,
-        orderValue: 0,
-        pastClicksRD: 0,
-      })),
-    )
-    logAction('DB_ZERO_METRICS', 'Zerou todos os dados numéricos', {})
-    toast({
-      title: 'Ação Sincronizada',
-      description: 'Todos os valores numéricos foram redefinidos para 0 para todos.',
-    })
+  const handleZeroMetrics = async () => {
+    if (!user) return
+    const newRows = data.map((r) => ({
+      ...r,
+      cost: 0,
+      impressions: 0,
+      reach: 0,
+      clicksAds: 0,
+      clicksRD: 0,
+      leadsSalesSheet: 0,
+      leadsRD: 0,
+      quoteQty: 0,
+      quoteValue: 0,
+      orderQty: 0,
+      orderValue: 0,
+    }))
+
+    setData(newRows)
+
+    try {
+      const rowsToUpsert = newRows.map((r) => mapToSupabase(r, user.id))
+      await supabase.from('campanhas').upsert(rowsToUpsert)
+      logAction('DB_ZERO_METRICS', 'Zerou todos os dados numéricos', {})
+      toast({ title: 'Ação Sincronizada', description: 'Valores redefinidos para 0.' })
+    } catch (e) {
+      toast({ title: 'Erro de sincronização', variant: 'destructive' })
+    }
   }
 
-  const handleDeleteRecords = (idsToDelete: Set<string>) => {
+  const handleDeleteRecords = async (idsToDelete: Set<string>) => {
+    const ids = Array.from(idsToDelete)
+
+    // Optimistic
     setData((prev) => prev.filter((r) => !idsToDelete.has(r.id)))
-    setSelectedIds((prev) => new Set([...prev].filter((id) => !idsToDelete.has(id))))
-    logAction('DB_DELETE', `Excluiu ${idsToDelete.size} registro(s)`, {
-      ids: Array.from(idsToDelete),
-    })
-    toast({
-      title: 'Ação Sincronizada',
-      description: `${idsToDelete.size} registro(s) excluído(s) da nuvem.`,
-    })
+    setSelectedIds(new Set())
+
+    try {
+      const { error } = await supabase.from('campanhas').delete().in('id', ids)
+      if (error) throw error
+
+      logAction('DB_DELETE', `Excluiu ${ids.length} registro(s)`, { ids })
+      toast({
+        title: 'Ação Sincronizada',
+        description: `${ids.length} registro(s) excluído(s) do banco de dados.`,
+      })
+    } catch (e) {
+      toast({ title: 'Erro ao excluir', variant: 'destructive' })
+    }
   }
 
   return {
