@@ -44,6 +44,87 @@ export type Database = {
           },
         ]
       }
+      campanhas: {
+        Row: {
+          alcance: number | null
+          cliques_ads: number | null
+          cliques_rd: number | null
+          criado_em: string
+          ctr: number | null
+          cvl: number | null
+          data_fim: string | null
+          data_inicio: string | null
+          dif_cliques: number | null
+          id: string
+          impressoes: number | null
+          investimento: number | null
+          leads_orcamento: number | null
+          leads_plan: number | null
+          leads_rd: number | null
+          nome_campanha: string | null
+          orcamento_pedido: number | null
+          orcamentos_qtd: number | null
+          pedidos_qtd: number | null
+          plataforma_canal: string | null
+          publico: string | null
+          usuario_id: string
+          valor_orcamento: number | null
+          valor_pedidos: number | null
+        }
+        Insert: {
+          alcance?: number | null
+          cliques_ads?: number | null
+          cliques_rd?: number | null
+          criado_em?: string
+          ctr?: number | null
+          cvl?: number | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          dif_cliques?: number | null
+          id?: string
+          impressoes?: number | null
+          investimento?: number | null
+          leads_orcamento?: number | null
+          leads_plan?: number | null
+          leads_rd?: number | null
+          nome_campanha?: string | null
+          orcamento_pedido?: number | null
+          orcamentos_qtd?: number | null
+          pedidos_qtd?: number | null
+          plataforma_canal?: string | null
+          publico?: string | null
+          usuario_id: string
+          valor_orcamento?: number | null
+          valor_pedidos?: number | null
+        }
+        Update: {
+          alcance?: number | null
+          cliques_ads?: number | null
+          cliques_rd?: number | null
+          criado_em?: string
+          ctr?: number | null
+          cvl?: number | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          dif_cliques?: number | null
+          id?: string
+          impressoes?: number | null
+          investimento?: number | null
+          leads_orcamento?: number | null
+          leads_plan?: number | null
+          leads_rd?: number | null
+          nome_campanha?: string | null
+          orcamento_pedido?: number | null
+          orcamentos_qtd?: number | null
+          pedidos_qtd?: number | null
+          plataforma_canal?: string | null
+          publico?: string | null
+          usuario_id?: string
+          valor_orcamento?: number | null
+          valor_pedidos?: number | null
+        }
+        Relationships: []
+      }
       dados_consolidados: {
         Row: {
           criado_em: string
@@ -292,6 +373,31 @@ export const Constants = {
 //   descricao: text (nullable)
 //   dados_json: jsonb (not null, default: '{}'::jsonb)
 //   criado_em: timestamp with time zone (not null, default: now())
+// Table: campanhas
+//   id: uuid (not null, default: gen_random_uuid())
+//   data_inicio: date (nullable)
+//   data_fim: date (nullable)
+//   plataforma_canal: text (nullable)
+//   nome_campanha: text (nullable)
+//   publico: text (nullable)
+//   investimento: numeric (nullable, default: 0)
+//   impressoes: numeric (nullable, default: 0)
+//   alcance: numeric (nullable, default: 0)
+//   cliques_rd: numeric (nullable, default: 0)
+//   cliques_ads: numeric (nullable, default: 0)
+//   ctr: numeric (nullable, default: 0)
+//   dif_cliques: numeric (nullable, default: 0)
+//   leads_plan: numeric (nullable, default: 0)
+//   leads_rd: numeric (nullable, default: 0)
+//   cvl: numeric (nullable, default: 0)
+//   orcamentos_qtd: numeric (nullable, default: 0)
+//   valor_orcamento: numeric (nullable, default: 0)
+//   pedidos_qtd: numeric (nullable, default: 0)
+//   valor_pedidos: numeric (nullable, default: 0)
+//   leads_orcamento: numeric (nullable, default: 0)
+//   orcamento_pedido: numeric (nullable, default: 0)
+//   usuario_id: uuid (not null)
+//   criado_em: timestamp with time zone (not null, default: now())
 // Table: dados_consolidados
 //   id: uuid (not null, default: gen_random_uuid())
 //   usuario_id: uuid (not null)
@@ -317,6 +423,9 @@ export const Constants = {
 // Table: base_dados
 //   PRIMARY KEY base_dados_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY base_dados_usuario_id_fkey: FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+// Table: campanhas
+//   PRIMARY KEY campanhas_pkey: PRIMARY KEY (id)
+//   FOREIGN KEY campanhas_usuario_id_fkey: FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE
 // Table: dados_consolidados
 //   PRIMARY KEY dados_consolidados_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY dados_consolidados_usuario_id_fkey: FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
@@ -330,6 +439,16 @@ export const Constants = {
 // --- ROW LEVEL SECURITY POLICIES ---
 // Table: base_dados
 //   Policy "base_dados_all" (ALL, PERMISSIVE) roles={public}
+//     USING: true
+//     WITH CHECK: true
+// Table: campanhas
+//   Policy "campanhas_delete" (DELETE, PERMISSIVE) roles={authenticated}
+//     USING: true
+//   Policy "campanhas_insert" (INSERT, PERMISSIVE) roles={authenticated}
+//     WITH CHECK: true
+//   Policy "campanhas_select" (SELECT, PERMISSIVE) roles={authenticated}
+//     USING: true
+//   Policy "campanhas_update" (UPDATE, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
 // Table: dados_consolidados
@@ -356,6 +475,37 @@ export const Constants = {
 //     INSERT INTO public.usuarios (id, email, nome)
 //     VALUES (NEW.id, NEW.email, COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)));
 //     RETURN NEW;
+//   END;
+//   $function$
+//
+// FUNCTION rls_auto_enable()
+//   CREATE OR REPLACE FUNCTION public.rls_auto_enable()
+//    RETURNS event_trigger
+//    LANGUAGE plpgsql
+//    SECURITY DEFINER
+//    SET search_path TO 'pg_catalog'
+//   AS $function$
+//   DECLARE
+//     cmd record;
+//   BEGIN
+//     FOR cmd IN
+//       SELECT *
+//       FROM pg_event_trigger_ddl_commands()
+//       WHERE command_tag IN ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+//         AND object_type IN ('table','partitioned table')
+//     LOOP
+//        IF cmd.schema_name IS NOT NULL AND cmd.schema_name IN ('public') AND cmd.schema_name NOT IN ('pg_catalog','information_schema') AND cmd.schema_name NOT LIKE 'pg_toast%' AND cmd.schema_name NOT LIKE 'pg_temp%' THEN
+//         BEGIN
+//           EXECUTE format('alter table if exists %s enable row level security', cmd.object_identity);
+//           RAISE LOG 'rls_auto_enable: enabled RLS on %', cmd.object_identity;
+//         EXCEPTION
+//           WHEN OTHERS THEN
+//             RAISE LOG 'rls_auto_enable: failed to enable RLS on %', cmd.object_identity;
+//         END;
+//        ELSE
+//           RAISE LOG 'rls_auto_enable: skip % (either system schema or not in enforced list: %.)', cmd.object_identity, cmd.schema_name;
+//        END IF;
+//     END LOOP;
 //   END;
 //   $function$
 //

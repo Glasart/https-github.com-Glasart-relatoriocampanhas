@@ -27,7 +27,6 @@ import { useAppContext } from '@/context/AppContext'
 
 const navItems = [
   { title: 'Comparativo Semanal', path: '/', icon: BarChart2 },
-  { title: 'Dias Específicos', path: '/specific-days', icon: CalendarDays },
   { title: 'Dados Consolidados', path: '/consolidated', icon: PieChart },
   { title: 'Previsibilidade', path: '/predictability', icon: Target },
   { title: 'Base de Dados', path: '/database', icon: Database },

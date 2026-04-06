@@ -6,7 +6,6 @@ import { AppProvider } from '@/context/AppContext'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
 import Layout from './components/Layout'
 import Index from './pages/Index'
-import SpecificDays from './pages/SpecificDays'
 import Database from './pages/Database'
 import Integrations from './pages/Integrations'
 import Analysis from './pages/Analysis'
@@ -42,7 +41,6 @@ const AppContent = () => {
           <Routes>
             <Route element={<Layout />}>
               <Route path="/" element={<Index />} />
-              <Route path="/specific-days" element={<SpecificDays />} />
               <Route path="/consolidated" element={<Consolidated />} />
               <Route path="/predictability" element={<Predictability />} />
               <Route path="/database" element={<Database />} />
