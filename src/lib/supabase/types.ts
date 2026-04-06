@@ -47,6 +47,111 @@ export type Database = {
       campanhas: {
         Row: {
           alcance: number | null
+          cliques_base_ads: number | null
+          cliques_base_rd: number | null
+          criado_em: string
+          ctr: number | null
+          cvl: number | null
+          data_fim: string | null
+          data_inicio: string | null
+          dif_cliques_base_rd: number | null
+          dif_leads_base_rd: number | null
+          id: string
+          impressoes: number | null
+          investimento: number | null
+          leads_base_planilhas_vendas: number | null
+          leads_base_rd: number | null
+          leads_orcamento: number | null
+          nome_campanha: string | null
+          nome_produto: string | null
+          orcamento_pedido: number | null
+          orcamentos_semana: number | null
+          pedidos_semana: number | null
+          plataforma_canal: string | null
+          publico: string | null
+          usuario_id: string
+        }
+        Insert: {
+          alcance?: number | null
+          cliques_base_ads?: number | null
+          cliques_base_rd?: number | null
+          criado_em?: string
+          ctr?: number | null
+          cvl?: number | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          dif_cliques_base_rd?: number | null
+          dif_leads_base_rd?: number | null
+          id?: string
+          impressoes?: number | null
+          investimento?: number | null
+          leads_base_planilhas_vendas?: number | null
+          leads_base_rd?: number | null
+          leads_orcamento?: number | null
+          nome_campanha?: string | null
+          nome_produto?: string | null
+          orcamento_pedido?: number | null
+          orcamentos_semana?: number | null
+          pedidos_semana?: number | null
+          plataforma_canal?: string | null
+          publico?: string | null
+          usuario_id: string
+        }
+        Update: {
+          alcance?: number | null
+          cliques_base_ads?: number | null
+          cliques_base_rd?: number | null
+          criado_em?: string
+          ctr?: number | null
+          cvl?: number | null
+          data_fim?: string | null
+          data_inicio?: string | null
+          dif_cliques_base_rd?: number | null
+          dif_leads_base_rd?: number | null
+          id?: string
+          impressoes?: number | null
+          investimento?: number | null
+          leads_base_planilhas_vendas?: number | null
+          leads_base_rd?: number | null
+          leads_orcamento?: number | null
+          nome_campanha?: string | null
+          nome_produto?: string | null
+          orcamento_pedido?: number | null
+          orcamentos_semana?: number | null
+          pedidos_semana?: number | null
+          plataforma_canal?: string | null
+          publico?: string | null
+          usuario_id?: string
+        }
+        Relationships: []
+      }
+      campanhas_historico_semanal: {
+        Row: {
+          campanha_id: string | null
+          cliques_base_rd_semana_anterior: number | null
+          criado_em: string
+          id: string
+          leads_base_rd_semana_anterior: number | null
+        }
+        Insert: {
+          campanha_id?: string | null
+          cliques_base_rd_semana_anterior?: number | null
+          criado_em?: string
+          id?: string
+          leads_base_rd_semana_anterior?: number | null
+        }
+        Update: {
+          campanha_id?: string | null
+          cliques_base_rd_semana_anterior?: number | null
+          criado_em?: string
+          id?: string
+          leads_base_rd_semana_anterior?: number | null
+        }
+        Relationships: []
+      }
+      campanhas_old_backup: {
+        Row: {
+          alcance: number | null
           cliques_ads: number | null
           cliques_rd: number | null
           criado_em: string
@@ -122,6 +227,63 @@ export type Database = {
           usuario_id?: string
           valor_orcamento?: number | null
           valor_pedidos?: number | null
+        }
+        Relationships: []
+      }
+      canais_comunicacao: {
+        Row: {
+          acessos: number | null
+          canal_nome: string | null
+          cliques: number | null
+          conversas: number | null
+          criado_em: string
+          data_fim: string | null
+          data_inicio: string | null
+          id: string
+          lead_orcamento_pct: number | null
+          leads: number | null
+          orcamento_pedido_pct: number | null
+          orcamentos_qtd: number | null
+          orcamentos_valor: number | null
+          pedidos_qtd: number | null
+          pedidos_valor: number | null
+          usuario_id: string
+        }
+        Insert: {
+          acessos?: number | null
+          canal_nome?: string | null
+          cliques?: number | null
+          conversas?: number | null
+          criado_em?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: string
+          lead_orcamento_pct?: number | null
+          leads?: number | null
+          orcamento_pedido_pct?: number | null
+          orcamentos_qtd?: number | null
+          orcamentos_valor?: number | null
+          pedidos_qtd?: number | null
+          pedidos_valor?: number | null
+          usuario_id: string
+        }
+        Update: {
+          acessos?: number | null
+          canal_nome?: string | null
+          cliques?: number | null
+          conversas?: number | null
+          criado_em?: string
+          data_fim?: string | null
+          data_inicio?: string | null
+          id?: string
+          lead_orcamento_pct?: number | null
+          leads?: number | null
+          orcamento_pedido_pct?: number | null
+          orcamentos_qtd?: number | null
+          orcamentos_valor?: number | null
+          pedidos_qtd?: number | null
+          pedidos_valor?: number | null
+          usuario_id?: string
         }
         Relationships: []
       }
@@ -378,6 +540,37 @@ export const Constants = {
 //   data_inicio: date (nullable)
 //   data_fim: date (nullable)
 //   plataforma_canal: text (nullable)
+//   nome_produto: text (nullable)
+//   nome_campanha: text (nullable)
+//   publico: text (nullable)
+//   investimento: numeric (nullable, default: 0)
+//   impressoes: numeric (nullable, default: 0)
+//   alcance: numeric (nullable, default: 0)
+//   cliques_base_ads: numeric (nullable, default: 0)
+//   cliques_base_rd: numeric (nullable, default: 0)
+//   leads_base_planilhas_vendas: numeric (nullable, default: 0)
+//   leads_base_rd: numeric (nullable, default: 0)
+//   orcamentos_semana: numeric (nullable, default: 0)
+//   pedidos_semana: numeric (nullable, default: 0)
+//   ctr: numeric (nullable, default: 0)
+//   dif_cliques_base_rd: numeric (nullable, default: 0)
+//   cvl: numeric (nullable, default: 0)
+//   dif_leads_base_rd: numeric (nullable, default: 0)
+//   leads_orcamento: numeric (nullable, default: 0)
+//   orcamento_pedido: numeric (nullable, default: 0)
+//   usuario_id: uuid (not null)
+//   criado_em: timestamp with time zone (not null, default: now())
+// Table: campanhas_historico_semanal
+//   id: uuid (not null, default: gen_random_uuid())
+//   campanha_id: uuid (nullable)
+//   cliques_base_rd_semana_anterior: numeric (nullable, default: 0)
+//   leads_base_rd_semana_anterior: numeric (nullable, default: 0)
+//   criado_em: timestamp with time zone (not null, default: now())
+// Table: campanhas_old_backup
+//   id: uuid (not null, default: gen_random_uuid())
+//   data_inicio: date (nullable)
+//   data_fim: date (nullable)
+//   plataforma_canal: text (nullable)
 //   nome_campanha: text (nullable)
 //   publico: text (nullable)
 //   investimento: numeric (nullable, default: 0)
@@ -396,6 +589,23 @@ export const Constants = {
 //   valor_pedidos: numeric (nullable, default: 0)
 //   leads_orcamento: numeric (nullable, default: 0)
 //   orcamento_pedido: numeric (nullable, default: 0)
+//   usuario_id: uuid (not null)
+//   criado_em: timestamp with time zone (not null, default: now())
+// Table: canais_comunicacao
+//   id: uuid (not null, default: gen_random_uuid())
+//   data_inicio: date (nullable)
+//   data_fim: date (nullable)
+//   canal_nome: text (nullable)
+//   acessos: numeric (nullable, default: 0)
+//   cliques: numeric (nullable, default: 0)
+//   conversas: numeric (nullable, default: 0)
+//   leads: numeric (nullable, default: 0)
+//   orcamentos_qtd: numeric (nullable, default: 0)
+//   orcamentos_valor: numeric (nullable, default: 0)
+//   pedidos_qtd: numeric (nullable, default: 0)
+//   pedidos_valor: numeric (nullable, default: 0)
+//   lead_orcamento_pct: numeric (nullable, default: 0)
+//   orcamento_pedido_pct: numeric (nullable, default: 0)
 //   usuario_id: uuid (not null)
 //   criado_em: timestamp with time zone (not null, default: now())
 // Table: dados_consolidados
@@ -424,8 +634,16 @@ export const Constants = {
 //   PRIMARY KEY base_dados_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY base_dados_usuario_id_fkey: FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 // Table: campanhas
+//   PRIMARY KEY campanhas_pkey1: PRIMARY KEY (id)
+//   FOREIGN KEY campanhas_usuario_id_fkey1: FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE
+// Table: campanhas_historico_semanal
+//   PRIMARY KEY campanhas_historico_semanal_pkey: PRIMARY KEY (id)
+// Table: campanhas_old_backup
 //   PRIMARY KEY campanhas_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY campanhas_usuario_id_fkey: FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE
+// Table: canais_comunicacao
+//   PRIMARY KEY canais_comunicacao_pkey: PRIMARY KEY (id)
+//   FOREIGN KEY canais_comunicacao_usuario_id_fkey: FOREIGN KEY (usuario_id) REFERENCES auth.users(id) ON DELETE CASCADE
 // Table: dados_consolidados
 //   PRIMARY KEY dados_consolidados_pkey: PRIMARY KEY (id)
 //   FOREIGN KEY dados_consolidados_usuario_id_fkey: FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
@@ -442,6 +660,10 @@ export const Constants = {
 //     USING: true
 //     WITH CHECK: true
 // Table: campanhas
+//   Policy "campanhas_all" (ALL, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
+// Table: campanhas_old_backup
 //   Policy "campanhas_delete" (DELETE, PERMISSIVE) roles={authenticated}
 //     USING: true
 //   Policy "campanhas_insert" (INSERT, PERMISSIVE) roles={authenticated}
@@ -449,6 +671,10 @@ export const Constants = {
 //   Policy "campanhas_select" (SELECT, PERMISSIVE) roles={authenticated}
 //     USING: true
 //   Policy "campanhas_update" (UPDATE, PERMISSIVE) roles={authenticated}
+//     USING: true
+//     WITH CHECK: true
+// Table: canais_comunicacao
+//   Policy "canais_all" (ALL, PERMISSIVE) roles={authenticated}
 //     USING: true
 //     WITH CHECK: true
 // Table: dados_consolidados
@@ -464,7 +690,52 @@ export const Constants = {
 //     USING: true
 //     WITH CHECK: true
 
+// --- WARNING: TABLES WITH RLS ENABLED BUT NO POLICIES ---
+// These tables have Row Level Security enabled but NO policies defined.
+// This means ALL queries (SELECT, INSERT, UPDATE, DELETE) will return ZERO rows
+// for non-superuser roles (including the anon and authenticated roles used by the app).
+// You MUST create RLS policies for these tables to allow data access.
+//   - campanhas_historico_semanal
+
 // --- DATABASE FUNCTIONS ---
+// FUNCTION calculate_campanhas_metrics()
+//   CREATE OR REPLACE FUNCTION public.calculate_campanhas_metrics()
+//    RETURNS trigger
+//    LANGUAGE plpgsql
+//   AS $function$
+//   DECLARE
+//       hist RECORD;
+//   BEGIN
+//       NEW.ctr := CASE WHEN NEW.impressoes > 0 THEN (NEW.cliques_base_ads / NEW.impressoes) * 100 ELSE 0 END;
+//       NEW.cvl := CASE WHEN NEW.leads_base_planilhas_vendas > 0 THEN NEW.leads_base_rd / NEW.leads_base_planilhas_vendas ELSE 0 END;
+//       NEW.leads_orcamento := CASE WHEN NEW.orcamentos_semana > 0 THEN (NEW.leads_base_rd / NEW.orcamentos_semana) * 100 ELSE 0 END;
+//       NEW.orcamento_pedido := CASE WHEN NEW.pedidos_semana > 0 THEN (NEW.orcamentos_semana / NEW.pedidos_semana) * 100 ELSE 0 END;
+//
+//       SELECT * INTO hist FROM public.campanhas_historico_semanal WHERE campanha_id = NEW.id ORDER BY criado_em DESC LIMIT 1;
+//       IF FOUND THEN
+//           NEW.dif_cliques_base_rd := NEW.cliques_base_rd - hist.cliques_base_rd_semana_anterior;
+//           NEW.dif_leads_base_rd := NEW.leads_base_rd - hist.leads_base_rd_semana_anterior;
+//       ELSE
+//           NEW.dif_cliques_base_rd := NEW.cliques_base_rd;
+//           NEW.dif_leads_base_rd := NEW.leads_base_rd;
+//       END IF;
+//
+//       RETURN NEW;
+//   END;
+//   $function$
+//
+// FUNCTION calculate_canais_metrics()
+//   CREATE OR REPLACE FUNCTION public.calculate_canais_metrics()
+//    RETURNS trigger
+//    LANGUAGE plpgsql
+//   AS $function$
+//   BEGIN
+//       NEW.lead_orcamento_pct := CASE WHEN NEW.orcamentos_qtd > 0 THEN (NEW.leads / NEW.orcamentos_qtd) * 100 ELSE 0 END;
+//       NEW.orcamento_pedido_pct := CASE WHEN NEW.pedidos_qtd > 0 THEN (NEW.orcamentos_qtd / NEW.pedidos_qtd) * 100 ELSE 0 END;
+//       RETURN NEW;
+//   END;
+//   $function$
+//
 // FUNCTION handle_new_user()
 //   CREATE OR REPLACE FUNCTION public.handle_new_user()
 //    RETURNS trigger
@@ -509,3 +780,9 @@ export const Constants = {
 //   END;
 //   $function$
 //
+
+// --- TRIGGERS ---
+// Table: campanhas
+//   trg_calculate_campanhas_metrics: CREATE TRIGGER trg_calculate_campanhas_metrics BEFORE INSERT OR UPDATE ON public.campanhas FOR EACH ROW EXECUTE FUNCTION calculate_campanhas_metrics()
+// Table: canais_comunicacao
+//   trg_calculate_canais_metrics: CREATE TRIGGER trg_calculate_canais_metrics BEFORE INSERT OR UPDATE ON public.canais_comunicacao FOR EACH ROW EXECUTE FUNCTION calculate_canais_metrics()

@@ -1,70 +1,76 @@
 import { useState, useMemo } from 'react'
 import { useDatabaseV2 } from '@/hooks/useDatabaseV2'
-import { CanaisForm } from './CanaisForm'
-import { CanaisTable } from './CanaisTable'
-import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Search } from 'lucide-react'
+import { CanaisEditableTable, canaisCols } from './CanaisEditableTable'
+import { BatchEditBar } from './BatchEditBar'
+import { Button } from '@/components/ui/button'
+import { Plus, Trash2 } from 'lucide-react'
 
-export function CanaisSection() {
-  const { canais, addCanal, updateCanal, deleteCanal } = useDatabaseV2()
-  const [editingRow, setEditingRow] = useState<any>(null)
-  const [search, setSearch] = useState('')
+export function CanaisSection({ startDate, endDate }: any) {
+  const { canais, addCanal, updateCanal, updateMultipleCanais, deleteCanal, deleteMultipleCanais } =
+    useDatabaseV2()
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   const filtered = useMemo(() => {
-    return canais.filter((c) => c.canal_nome?.toLowerCase().includes(search.toLowerCase()))
-  }, [canais, search])
+    return canais.filter((c) => {
+      let pass = true
+      if (startDate && c.data_inicio && c.data_inicio < startDate) pass = false
+      if (endDate && c.data_fim && c.data_fim > endDate) pass = false
+      return pass
+    })
+  }, [canais, startDate, endDate])
+
+  const handleApplyBatch = (col: string, val: string) => {
+    if (!col) return
+    const updateData = { [col]: val }
+    updateMultipleCanais(selectedIds, updateData)
+    setSelectedIds([])
+  }
+
+  const handleDeleteBatch = () => {
+    if (confirm('Tem certeza que deseja deletar os registros selecionados?')) {
+      deleteMultipleCanais(selectedIds)
+      setSelectedIds([])
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-        <h2 className="text-lg font-bold text-slate-800 border-b pb-3">
-          Adicionar Novo Canal de Comunicação
-        </h2>
-        <CanaisForm onSubmit={addCanal} />
-      </div>
-
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <h2 className="text-lg font-bold text-slate-800">Registros de Canais</h2>
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome do canal..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-slate-50"
-            />
-          </div>
+    <div className="space-y-4">
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:hidden">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">Canais de Comunicação</h2>
+          <p className="text-sm text-muted-foreground">
+            Comparativo semanal e performance dos canais auxiliares.
+          </p>
         </div>
-        <CanaisTable data={filtered} onEdit={setEditingRow} onDelete={deleteCanal} />
+        <div className="flex gap-3">
+          {selectedIds.length > 0 && (
+            <Button variant="destructive" onClick={handleDeleteBatch} className="gap-2">
+              <Trash2 className="w-4 h-4" /> Excluir {selectedIds.length}
+            </Button>
+          )}
+          <Button
+            onClick={() => addCanal({ canal_nome: 'E-mail' })}
+            className="gap-2 bg-emerald-600 hover:bg-emerald-700"
+          >
+            <Plus className="w-4 h-4" /> Adicionar Linha
+          </Button>
+        </div>
       </div>
 
-      <Dialog open={!!editingRow} onOpenChange={(open) => !open && setEditingRow(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Editar Registro de Canal</DialogTitle>
-          </DialogHeader>
-          {editingRow && (
-            <CanaisForm
-              initialData={editingRow}
-              isEdit
-              onSubmit={(data: any) => {
-                const {
-                  id,
-                  criado_em,
-                  usuario_id,
-                  lead_orcamento_pct,
-                  orcamento_pedido_pct,
-                  ...rest
-                } = data
-                updateCanal(editingRow.id, rest)
-                setEditingRow(null)
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <BatchEditBar
+        selectedIds={selectedIds}
+        columns={canaisCols}
+        onApply={handleApplyBatch}
+        onClear={() => setSelectedIds([])}
+      />
+
+      <CanaisEditableTable
+        data={filtered}
+        onUpdate={(id: string, key: string, val: any) => updateCanal(id, { [key]: val })}
+        onDelete={deleteCanal}
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+      />
     </div>
   )
 }

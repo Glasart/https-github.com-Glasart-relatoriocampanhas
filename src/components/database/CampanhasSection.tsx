@@ -1,77 +1,85 @@
 import { useState, useMemo } from 'react'
 import { useDatabaseV2 } from '@/hooks/useDatabaseV2'
-import { CampanhasForm } from './CampanhasForm'
-import { CampanhasTable } from './CampanhasTable'
-import { Input } from '@/components/ui/input'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Search } from 'lucide-react'
+import { CampanhasEditableTable, campanhasCols } from './CampanhasEditableTable'
+import { BatchEditBar } from './BatchEditBar'
+import { Button } from '@/components/ui/button'
+import { Plus, Trash2 } from 'lucide-react'
 
-export function CampanhasSection() {
-  const { campanhas, addCampanha, updateCampanha, deleteCampanha } = useDatabaseV2()
-  const [editingRow, setEditingRow] = useState<any>(null)
-  const [search, setSearch] = useState('')
+export function CampanhasSection({ startDate, endDate, platform }: any) {
+  const {
+    campanhas,
+    addCampanha,
+    updateCampanha,
+    updateMultipleCampanhas,
+    deleteCampanha,
+    deleteMultipleCampanhas,
+  } = useDatabaseV2()
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
   const filtered = useMemo(() => {
-    return campanhas.filter(
-      (c) =>
-        c.nome_campanha?.toLowerCase().includes(search.toLowerCase()) ||
-        c.plataforma_canal?.toLowerCase().includes(search.toLowerCase()) ||
-        c.nome_produto?.toLowerCase().includes(search.toLowerCase()),
-    )
-  }, [campanhas, search])
+    return campanhas.filter((c) => {
+      let pass = true
+      if (startDate && c.data_inicio && c.data_inicio < startDate) pass = false
+      if (endDate && c.data_fim && c.data_fim > endDate) pass = false
+      if (platform && platform !== 'Todas' && c.plataforma_canal !== platform) pass = false
+      return pass
+    })
+  }, [campanhas, startDate, endDate, platform])
+
+  const handleApplyBatch = (col: string, val: string) => {
+    if (!col) return
+    const updateData = { [col]: val }
+    updateMultipleCampanhas(selectedIds, updateData)
+    setSelectedIds([])
+  }
+
+  const handleDeleteBatch = () => {
+    if (confirm('Tem certeza que deseja deletar os registros selecionados?')) {
+      deleteMultipleCampanhas(selectedIds)
+      setSelectedIds([])
+    }
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-        <h2 className="text-lg font-bold text-slate-800 border-b pb-3">Adicionar Nova Campanha</h2>
-        <CampanhasForm onSubmit={addCampanha} />
-      </div>
-
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-4">
+      <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm print:hidden">
+        <div>
           <h2 className="text-lg font-bold text-slate-800">Registros de Campanhas</h2>
-          <div className="relative w-full sm:w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar plataforma, produto ou campanha..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 bg-slate-50"
-            />
-          </div>
+          <p className="text-sm text-muted-foreground">
+            Adicione e edite os dados das suas campanhas. O salvamento é automático.
+          </p>
         </div>
-        <CampanhasTable data={filtered} onEdit={setEditingRow} onDelete={deleteCampanha} />
+        <div className="flex gap-3">
+          {selectedIds.length > 0 && (
+            <Button variant="destructive" onClick={handleDeleteBatch} className="gap-2">
+              <Trash2 className="w-4 h-4" /> Excluir {selectedIds.length}
+            </Button>
+          )}
+          <Button
+            onClick={() =>
+              addCampanha({ plataforma_canal: platform !== 'Todas' ? platform : 'Google Ads' })
+            }
+            className="gap-2 bg-indigo-600 hover:bg-indigo-700"
+          >
+            <Plus className="w-4 h-4" /> Adicionar Linha
+          </Button>
+        </div>
       </div>
 
-      <Dialog open={!!editingRow} onOpenChange={(open) => !open && setEditingRow(null)}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Editar Registro de Campanha</DialogTitle>
-          </DialogHeader>
-          {editingRow && (
-            <CampanhasForm
-              initialData={editingRow}
-              isEdit
-              onSubmit={(data: any) => {
-                const {
-                  id,
-                  criado_em,
-                  usuario_id,
-                  ctr,
-                  dif_cliques_base_rd,
-                  cvl,
-                  dif_leads_base_rd,
-                  leads_orcamento,
-                  orcamento_pedido,
-                  ...rest
-                } = data
-                updateCampanha(editingRow.id, rest)
-                setEditingRow(null)
-              }}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+      <BatchEditBar
+        selectedIds={selectedIds}
+        columns={campanhasCols}
+        onApply={handleApplyBatch}
+        onClear={() => setSelectedIds([])}
+      />
+
+      <CampanhasEditableTable
+        data={filtered}
+        onUpdate={(id: string, key: string, val: any) => updateCampanha(id, { [key]: val })}
+        onDelete={deleteCampanha}
+        selectedIds={selectedIds}
+        setSelectedIds={setSelectedIds}
+      />
     </div>
   )
 }
