@@ -1,5 +1,6 @@
 {
   "_versions": {
-    "aggregate-daily": 1
+    "aggregate-daily": 2,
+    "enviar-notificacao-cliente": 1
   }
 }
