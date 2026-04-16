@@ -6,7 +6,6 @@ import { AppProvider } from '@/context/AppContext'
 import { AuthProvider, useAuth } from '@/hooks/use-auth'
 import Layout from './components/Layout'
 import Index from './pages/Index'
-import Database from './pages/Database'
 import Integrations from './pages/Integrations'
 import Analysis from './pages/Analysis'
 import Consolidated from './pages/Consolidated'
@@ -43,7 +42,6 @@ const AppContent = () => {
               <Route path="/" element={<Index />} />
               <Route path="/consolidated" element={<Consolidated />} />
               <Route path="/predictability" element={<Predictability />} />
-              <Route path="/database" element={<Database />} />
               <Route path="/integrations" element={<Integrations />} />
               <Route path="/analysis" element={<Analysis />} />
               <Route path="/history" element={<History />} />

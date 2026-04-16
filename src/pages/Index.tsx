@@ -1,12 +1,10 @@
-import { useMemo, useCallback, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useAppContext } from '@/context/AppContext'
 import { MetricCard } from '@/components/MetricCard'
 import { ComparisonTable } from '@/components/ComparisonTable'
 import { OtherChannelsTable } from '@/components/OtherChannelsTable'
 import { DatePickerWithRange } from '@/components/DatePickerWithRange'
 import { subDays, parseISO, startOfDay, endOfDay, format } from 'date-fns'
-import { CampaignRow, OtherChannelRow } from '@/types'
-import { OTHER_CHANNELS } from '@/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Settings2, Maximize2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -16,29 +14,35 @@ import {
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu'
-import { useToast } from '@/hooks/use-toast'
+import { usePerformanceData } from '@/hooks/use-performance-data'
 
 const tableCols = [
-  { id: 'startDate', label: 'Data Início' },
-  { id: 'endDate', label: 'Data Fim' },
-  { id: 'platform', label: 'Plataforma' },
-  { id: 'campaign', label: 'Nome da Campanha' },
-  { id: 'audience', label: 'Público' },
+  { id: 'data_inicio', label: 'Data Início' },
+  { id: 'data_fim', label: 'Data Fim' },
+  { id: 'campanha_nome', label: 'Nome da Campanha' },
+  { id: 'impressoes', label: 'Impressões' },
+  { id: 'alcance', label: 'Alcance' },
+  { id: 'cliques', label: 'Cliques' },
+  { id: 'ctr', label: 'CTR (%)' },
+  { id: 'leads', label: 'Leads' },
+  { id: 'conversoes', label: 'Conversões' },
+  { id: 'roi', label: 'ROI (%)' },
 ]
 
 const otherCols = [
-  { id: 'channel', label: 'Canal' },
-  { id: 'accesses', label: 'Acessos' },
-  { id: 'clicks', label: 'Cliques' },
-  { id: 'conversations', label: 'Conversas' },
+  { id: 'data_inicio', label: 'Data Início' },
+  { id: 'data_fim', label: 'Data Fim' },
+  { id: 'canal_nome', label: 'Nome do Canal' },
+  { id: 'acessos', label: 'Acessos' },
+  { id: 'cliques', label: 'Cliques' },
+  { id: 'conversas', label: 'Conversas' },
   { id: 'leads', label: 'Leads' },
-  { id: 'quotesQty', label: 'Orçamentos (Qtd)' },
-  { id: 'quotesValue', label: 'Orçamentos (R$)' },
-  { id: 'ordersQty', label: 'Pedidos (Qtd)' },
-  { id: 'ordersValue', label: 'Pedidos (R$)' },
-  { id: 'convLeadQuote', label: '% Lead → Orç.' },
-  { id: 'convQuoteOrder', label: '% Orç. → Ped.' },
-  { id: 'userName', label: 'Usuário Responsável' },
+  { id: 'orcamentos_qtd', label: 'Orçamentos (Qtd)' },
+  { id: 'orcamentos_valor', label: 'Orçamentos (R$)' },
+  { id: 'pedidos_qtd', label: 'Pedidos (Qtd)' },
+  { id: 'pedidos_valor', label: 'Pedidos (R$)' },
+  { id: 'lead_orcamento_pct', label: '% Lead → Orç.' },
+  { id: 'orcamento_pedido_pct', label: '% Orç. → Ped.' },
 ]
 
 const SectionHeader = ({ title, cols, visibleCols, setVisibleCols, onExpand }: any) => {
@@ -80,45 +84,52 @@ const SectionHeader = ({ title, cols, visibleCols, setVisibleCols, onExpand }: a
 }
 
 export default function Index() {
+  const { filters, setFilters } = useAppContext()
   const {
-    data,
-    setData,
-    otherChannelsData,
-    setOtherChannelsData,
-    filters,
-    setFilters,
-    logAction,
-    user,
-  } = useAppContext()
+    performanceData,
+    outrosCanaisData,
+    loading,
+    updatePerformance,
+    updateBulkPerformance,
+    deletePerformance,
+    deleteBulkPerformance,
+    addPerformance,
+    updateOutrosCanais,
+    updateBulkOutrosCanais,
+    deleteOutrosCanais,
+    deleteBulkOutrosCanais,
+    addOutrosCanais,
+  } = usePerformanceData()
 
-  const { toast } = useToast()
-
-  const [expandedState, setExpandedState] = useState({
-    camp: false,
-    other: false,
-  })
+  const [expandedState, setExpandedState] = useState({ camp: false, other: false })
 
   const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
-    startDate: true,
-    endDate: true,
-    platform: true,
-    campaign: true,
-    audience: true,
+    data_inicio: true,
+    data_fim: true,
+    campanha_nome: true,
+    impressoes: true,
+    alcance: true,
+    cliques: true,
+    ctr: true,
+    leads: true,
+    conversoes: true,
+    roi: true,
   })
 
   const [visibleOtherCols, setVisibleOtherCols] = useState<Record<string, boolean>>({
-    channel: true,
-    accesses: true,
-    clicks: true,
-    conversations: true,
+    data_inicio: true,
+    data_fim: true,
+    canal_nome: true,
+    acessos: true,
+    cliques: true,
+    conversas: true,
     leads: true,
-    quotesQty: true,
-    quotesValue: true,
-    ordersQty: true,
-    ordersValue: true,
-    convLeadQuote: true,
-    convQuoteOrder: true,
-    userName: true,
+    orcamentos_qtd: true,
+    orcamentos_valor: true,
+    pedidos_qtd: true,
+    pedidos_valor: true,
+    lead_orcamento_pct: true,
+    orcamento_pedido_pct: true,
   })
 
   const dates = useMemo(() => {
@@ -131,444 +142,41 @@ export default function Index() {
     return { currentFrom, currentTo, pastFrom, pastTo }
   }, [filters.dateRange])
 
-  const { currMergedCamp, currMergedOther, totals } = useMemo(() => {
-    const filterRows = (arr: any[], from: Date, to: Date, isOther = false) => {
-      return arr.filter((r) => {
-        const dDate = parseISO(isOther ? r.date : r.startDate || r.date || '')
-        return dDate >= from && dDate <= to
-      })
-    }
+  const filterRows = (arr: any[], from: Date, to: Date) => {
+    return arr.filter((r) => {
+      const dDate = r.data_inicio ? parseISO(r.data_inicio) : new Date()
+      return dDate >= from && dDate <= to
+    })
+  }
 
-    const currCampRows = filterRows(data, dates.currentFrom, dates.currentTo)
-    const pastCampRows = filterRows(data, dates.pastFrom, dates.pastTo)
+  const currMergedCamp = useMemo(
+    () => filterRows(performanceData, dates.currentFrom, dates.currentTo),
+    [performanceData, dates],
+  )
+  const currMergedOther = useMemo(
+    () => filterRows(outrosCanaisData, dates.currentFrom, dates.currentTo),
+    [outrosCanaisData, dates],
+  )
 
-    const currOtherRows = filterRows(otherChannelsData, dates.currentFrom, dates.currentTo, true)
-    const pastOtherRows = filterRows(otherChannelsData, dates.pastFrom, dates.pastTo, true)
-
-    const aggregateCampaigns = (rows: CampaignRow[], compareRows: CampaignRow[]) => {
-      const getRowKey = (r: any) => `${r.platform}|${r.campaign}|${r.audience}`
-      const grouped = new Map<string, any>()
-
-      rows.forEach((r) => {
-        const key = getRowKey(r)
-        if (!grouped.has(key)) {
-          grouped.set(key, {
-            id: key,
-            platform: r.platform,
-            campaign: r.campaign,
-            audience: r.audience,
-            impressions: 0,
-            reach: 0,
-            clicksAds: 0,
-            clicksRD: 0,
-            leadsSalesSheet: 0,
-            leadsRD: 0,
-            quoteQty: 0,
-            quoteValue: 0,
-            orderQty: 0,
-            orderValue: 0,
-            cost: 0,
-            pastClicksRD: 0,
-          })
-        }
-        const g = grouped.get(key)
-        g.impressions += r.impressions || 0
-        g.reach += r.reach || 0
-        g.clicksAds += r.clicksAds || 0
-        g.clicksRD += r.clicksRD || 0
-        g.leadsSalesSheet += r.leadsSalesSheet || 0
-        g.leadsRD += r.leadsRD || 0
-        g.quoteQty += r.quoteQty || 0
-        g.quoteValue += r.quoteValue || 0
-        g.orderQty += r.orderQty || 0
-        g.orderValue += r.orderValue || 0
-        g.cost += r.cost || 0
-      })
-
-      compareRows.forEach((r) => {
-        const key = getRowKey(r)
-        if (grouped.has(key)) grouped.get(key).pastClicksRD += r.clicksRD || 0
-      })
-
-      return Array.from(grouped.values())
-    }
-
-    const aggregateOther = (rows: OtherChannelRow[]) => {
-      const groupedOther = new Map<string, any>()
-      OTHER_CHANNELS.forEach((ch) => {
-        groupedOther.set(ch, {
-          channel: ch,
-          leads: 0,
-          quotesQty: 0,
-          quotesValue: 0,
-          ordersQty: 0,
-          ordersValue: 0,
-          clicks: 0,
-          conversations: 0,
-          accesses: 0,
-          userName: undefined,
-          userColor: undefined,
-        })
-      })
-
-      rows.forEach((r) => {
-        const g = groupedOther.get(r.channel)
-        if (g) {
-          g.leads += r.leads || 0
-          g.quotesQty += r.quotesQty || 0
-          g.quotesValue += r.quotesValue || 0
-          g.ordersQty += r.ordersQty || 0
-          g.ordersValue += r.ordersValue || 0
-          g.clicks += r.clicks || 0
-          g.conversations += r.conversations || 0
-          g.accesses += r.accesses || 0
-          if (r.userName) {
-            g.userName = r.userName
-            g.userColor = r.userColor
-          }
-        }
-      })
-      return Array.from(groupedOther.values())
-    }
-
-    const cMergedCamp = aggregateCampaigns(currCampRows, pastCampRows)
-    const cMergedOther = aggregateOther(currOtherRows)
-
-    const t = {
-      currInvestimento: currCampRows.reduce((s, r) => s + (r.cost || 0), 0),
-      pastInvestimento: pastCampRows.reduce((s, r) => s + (r.cost || 0), 0),
-      currOrcamento:
-        currCampRows.reduce((s, r) => s + (r.quoteValue || 0), 0) +
-        currOtherRows.reduce((s, r) => s + (r.quotesValue || 0), 0),
-      pastOrcamento:
-        pastCampRows.reduce((s, r) => s + (r.quoteValue || 0), 0) +
-        pastOtherRows.reduce((s, r) => s + (r.quotesValue || 0), 0),
-      currLeads:
-        currCampRows.reduce((s, r) => s + (r.leadsRD || 0), 0) +
-        currOtherRows.reduce((s, r) => s + (r.leads || 0), 0),
-      pastLeads:
-        pastCampRows.reduce((s, r) => s + (r.leadsRD || 0), 0) +
-        pastOtherRows.reduce((s, r) => s + (r.leads || 0), 0),
-      currPedidos:
-        currCampRows.reduce((s, r) => s + (r.orderQty || 0), 0) +
-        currOtherRows.reduce((s, r) => s + (r.ordersQty || 0), 0),
-      pastPedidos:
-        pastCampRows.reduce((s, r) => s + (r.orderQty || 0), 0) +
-        pastOtherRows.reduce((s, r) => s + (r.ordersQty || 0), 0),
-    }
+  const totals = useMemo(() => {
+    const pastCamp = filterRows(performanceData, dates.pastFrom, dates.pastTo)
+    const pastOther = filterRows(outrosCanaisData, dates.pastFrom, dates.pastTo)
 
     return {
-      currMergedCamp: cMergedCamp,
-      currMergedOther: cMergedOther,
-      totals: t,
+      currInvestimento: 0, // Field not requested in DB schema
+      pastInvestimento: 0,
+      currOrcamento: currMergedOther.reduce((s, r) => s + (Number(r.orcamentos_valor) || 0), 0),
+      pastOrcamento: pastOther.reduce((s, r) => s + (Number(r.orcamentos_valor) || 0), 0),
+      currLeads:
+        currMergedCamp.reduce((s, r) => s + (Number(r.leads) || 0), 0) +
+        currMergedOther.reduce((s, r) => s + (Number(r.leads) || 0), 0),
+      pastLeads:
+        pastCamp.reduce((s, r) => s + (Number(r.leads) || 0), 0) +
+        pastOther.reduce((s, r) => s + (Number(r.leads) || 0), 0),
+      currPedidos: currMergedOther.reduce((s, r) => s + (Number(r.pedidos_qtd) || 0), 0),
+      pastPedidos: pastOther.reduce((s, r) => s + (Number(r.pedidos_qtd) || 0), 0),
     }
-  }, [data, otherChannelsData, dates])
-
-  const handleUpdateCampGeneric = useCallback(
-    (id: string, field: string, newValue: number) => {
-      const [platform, campaign, audience] = id.split('|')
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setData((prev) => {
-        const newData = [...prev]
-        const matchingRows = newData.filter((r) => {
-          const dDate = parseISO(r.startDate || r.date || '')
-          return (
-            r.platform === platform &&
-            r.campaign === campaign &&
-            r.audience === audience &&
-            dDate >= fromD &&
-            dDate <= toD
-          )
-        })
-
-        if (matchingRows.length > 0) {
-          const currentTotal = matchingRows.reduce(
-            (sum, r) => sum + (Number(r[field as keyof CampaignRow]) || 0),
-            0,
-          )
-          const diff = newValue - currentTotal
-          const firstRowIndex = newData.findIndex((r) => r.id === matchingRows[0].id)
-          if (firstRowIndex !== -1) {
-            const oldRow = newData[firstRowIndex]
-            const newRow = {
-              ...oldRow,
-              [field]: (Number(oldRow[field as keyof CampaignRow]) || 0) + diff,
-              version: (oldRow.version || 1) + 1,
-            }
-            newData[firstRowIndex] = newRow
-            logAction('UPDATE_DATA', `Editou ${field} em ${oldRow.campaign}`, {
-              id: oldRow.id,
-              prev: oldRow,
-              next: newRow,
-            })
-          }
-        }
-        return newData
-      })
-      toast({
-        title: 'Atualização Automática',
-        description: 'Os dados estão sendo sincronizados com a nuvem.',
-        duration: 2000,
-      })
-    },
-    [dates, setData, logAction, toast],
-  )
-
-  const handleBulkUpdateCampGeneric = useCallback(
-    (ids: string[], updates: Record<string, number>) => {
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setData((prev) => {
-        const newData = [...prev]
-        ids.forEach((id) => {
-          const [platform, campaign, audience] = id.split('|')
-          const matchingRows = newData.filter((r) => {
-            const dDate = parseISO(r.startDate || r.date || '')
-            return (
-              r.platform === platform &&
-              r.campaign === campaign &&
-              r.audience === audience &&
-              dDate >= fromD &&
-              dDate <= toD
-            )
-          })
-
-          if (matchingRows.length > 0) {
-            const firstRowIndex = newData.findIndex((r) => r.id === matchingRows[0].id)
-            if (firstRowIndex !== -1) {
-              const oldRow = newData[firstRowIndex]
-              const newRow = { ...oldRow, version: (oldRow.version || 1) + 1 }
-              Object.entries(updates).forEach(([field, val]) => {
-                const currentTotal = matchingRows.reduce(
-                  (sum, r) => sum + (Number(r[field as keyof CampaignRow]) || 0),
-                  0,
-                )
-                const diff = val - currentTotal
-                newRow[field as keyof CampaignRow] =
-                  (Number(oldRow[field as keyof CampaignRow]) || 0) + diff
-              })
-              newData[firstRowIndex] = newRow
-            }
-          }
-        })
-        logAction('BULK_UPDATE_DATA', `Edição em massa aplicada a ${ids.length} campanhas`, {
-          updates,
-        })
-        return newData
-      })
-      toast({
-        title: 'Edição em Lote',
-        description: 'Sincronizando alterações em massa com a nuvem...',
-      })
-    },
-    [dates, setData, logAction, toast],
-  )
-
-  const handleDeleteCampGeneric = useCallback(
-    (id: string) => {
-      const [platform, campaign, audience] = id.split('|')
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setData((prev) => {
-        const newData = prev.filter((r) => {
-          const dDate = parseISO(r.startDate || r.date || '')
-          const isMatch =
-            r.platform === platform &&
-            r.campaign === campaign &&
-            r.audience === audience &&
-            dDate >= fromD &&
-            dDate <= toD
-          return !isMatch
-        })
-        logAction('DELETE_DATA', `Excluiu a campanha ${campaign}`, { id })
-        return newData
-      })
-      toast({ title: 'Ação Sincronizada', description: 'Registro excluído do banco central.' })
-    },
-    [dates, setData, logAction, toast],
-  )
-
-  const handleBulkDeleteCampGeneric = useCallback(
-    (ids: string[]) => {
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setData((prev) => {
-        const newData = prev.filter((r) => {
-          const dDate = parseISO(r.startDate || r.date || '')
-          const key = `${r.platform}|${r.campaign}|${r.audience}`
-          const isMatch = ids.includes(key) && dDate >= fromD && dDate <= toD
-          return !isMatch
-        })
-        logAction('BULK_DELETE_DATA', `Excluiu ${ids.length} campanhas`, { ids })
-        return newData
-      })
-      toast({ title: 'Ação Sincronizada', description: 'Exclusão em lote confirmada.' })
-    },
-    [dates, setData, logAction, toast],
-  )
-
-  const handleUpdateOtherGeneric = useCallback(
-    (channel: string, field: string, newValue: number) => {
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setOtherChannelsData((prev) => {
-        const newData = [...prev]
-        const matchingRows = newData.filter((r) => {
-          const dDate = parseISO(r.date)
-          return r.channel === channel && dDate >= fromD && dDate <= toD
-        })
-
-        if (matchingRows.length > 0) {
-          const currentTotal = matchingRows.reduce(
-            (sum, r) => sum + (Number(r[field as keyof OtherChannelRow]) || 0),
-            0,
-          )
-          const diff = newValue - currentTotal
-          const firstRowIndex = newData.findIndex((r) => r.id === matchingRows[0].id)
-          if (firstRowIndex !== -1) {
-            const oldRow = newData[firstRowIndex]
-            const newRow = {
-              ...oldRow,
-              [field]: (Number(oldRow[field as keyof OtherChannelRow]) || 0) + diff,
-              userName: user?.name || oldRow.userName,
-              userColor: user?.color || oldRow.userColor,
-            }
-            newData[firstRowIndex] = newRow
-            logAction('UPDATE_OTHER_DATA', `Editou ${field} do canal ${channel}`, {
-              id: oldRow.id,
-              prev: oldRow,
-              next: newRow,
-            })
-          }
-        } else {
-          const dateStr = format(fromD, 'yyyy-MM-dd')
-          const newRow: OtherChannelRow = {
-            id: crypto.randomUUID(),
-            date: dateStr,
-            channel,
-            leads: 0,
-            quotesQty: 0,
-            quotesValue: 0,
-            ordersQty: 0,
-            ordersValue: 0,
-            clicks: 0,
-            conversations: 0,
-            accesses: 0,
-            [field]: newValue,
-            userName: user?.name,
-            userColor: user?.color,
-          }
-          newData.push(newRow)
-          logAction('UPDATE_OTHER_DATA', `Criou registro para ${channel}`, {
-            id: newRow.id,
-            prev: null,
-            next: newRow,
-          })
-        }
-        return newData
-      })
-      toast({
-        title: 'Atualização Automática',
-        description: 'Os dados estão sendo sincronizados com a nuvem.',
-        duration: 2000,
-      })
-    },
-    [dates, setOtherChannelsData, logAction, user, toast],
-  )
-
-  const handleBulkUpdateOtherGeneric = useCallback(
-    (channels: string[], updates: Record<string, number>) => {
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setOtherChannelsData((prev) => {
-        const newData = [...prev]
-        channels.forEach((channel) => {
-          const matchingRows = newData.filter((r) => {
-            const dDate = parseISO(r.date)
-            return r.channel === channel && dDate >= fromD && dDate <= toD
-          })
-
-          if (matchingRows.length > 0) {
-            const firstRowIndex = newData.findIndex((r) => r.id === matchingRows[0].id)
-            if (firstRowIndex !== -1) {
-              const oldRow = newData[firstRowIndex]
-              const newRow = {
-                ...oldRow,
-                userName: user?.name || oldRow.userName,
-                userColor: user?.color || oldRow.userColor,
-              }
-              Object.entries(updates).forEach(([field, val]) => {
-                const currentTotal = matchingRows.reduce(
-                  (sum, r) => sum + (Number(r[field as keyof OtherChannelRow]) || 0),
-                  0,
-                )
-                const diff = val - currentTotal
-                newRow[field as keyof OtherChannelRow] =
-                  (Number(oldRow[field as keyof OtherChannelRow]) || 0) + diff
-              })
-              newData[firstRowIndex] = newRow
-            }
-          }
-        })
-        logAction(
-          'BULK_UPDATE_OTHER_DATA',
-          `Edição em massa aplicada a ${channels.length} canais`,
-          { updates },
-        )
-        return newData
-      })
-      toast({
-        title: 'Edição em Lote',
-        description: 'Sincronizando alterações em massa com a nuvem...',
-      })
-    },
-    [dates, setOtherChannelsData, logAction, user, toast],
-  )
-
-  const handleDeleteOtherGeneric = useCallback(
-    (channel: string) => {
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setOtherChannelsData((prev) => {
-        const newData = prev.filter((r) => {
-          const dDate = parseISO(r.date)
-          const isMatch = r.channel === channel && dDate >= fromD && dDate <= toD
-          return !isMatch
-        })
-        logAction('DELETE_OTHER_DATA', `Excluiu o canal ${channel}`, { channel })
-        return newData
-      })
-      toast({ title: 'Ação Sincronizada', description: 'Registro excluído do banco central.' })
-    },
-    [dates, setOtherChannelsData, logAction, toast],
-  )
-
-  const handleBulkDeleteOtherGeneric = useCallback(
-    (channels: string[]) => {
-      const fromD = dates.currentFrom
-      const toD = dates.currentTo
-
-      setOtherChannelsData((prev) => {
-        const newData = prev.filter((r) => {
-          const dDate = parseISO(r.date)
-          const isMatch = channels.includes(r.channel) && dDate >= fromD && dDate <= toD
-          return !isMatch
-        })
-        logAction('BULK_DELETE_OTHER_DATA', `Excluiu ${channels.length} canais`, { channels })
-        return newData
-      })
-      toast({ title: 'Ação Sincronizada', description: 'Exclusão em lote confirmada.' })
-    },
-    [dates, setOtherChannelsData, logAction, toast],
-  )
+  }, [currMergedCamp, currMergedOther, performanceData, outrosCanaisData, dates])
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto animate-fade-in-up">
@@ -576,11 +184,12 @@ export default function Index() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-slate-900">Comparativo Semanal</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Análise agregada das campanhas e canais com base no período selecionado.
+            Análise agregada das campanhas e canais. Edite diretamente na tabela e as alterações
+            serão salvas.
           </p>
         </div>
         <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-600 mr-2">Período:</span>
+          <span className="text-sm font-medium text-slate-600 mr-2">Período (Data Início):</span>
           <DatePickerWithRange
             date={filters.dateRange}
             setDate={(date) => setFilters((prev) => ({ ...prev, dateRange: date }))}
@@ -616,44 +225,63 @@ export default function Index() {
         />
       </div>
 
-      <div className="space-y-8">
-        <div className="pt-4">
-          <SectionHeader
-            title="Performance de Campanhas"
-            cols={tableCols}
-            visibleCols={visibleCols}
-            setVisibleCols={setVisibleCols}
-            onExpand={() => setExpandedState((prev) => ({ ...prev, camp: true }))}
-          />
-          <ComparisonTable
-            mergedData={currMergedCamp}
-            dateRange={{ from: dates.currentFrom, to: dates.currentTo }}
-            onUpdate={handleUpdateCampGeneric}
-            onBulkUpdate={handleBulkUpdateCampGeneric}
-            onDelete={handleDeleteCampGeneric}
-            onBulkDelete={handleBulkDeleteCampGeneric}
-            visibleCols={visibleCols}
-          />
+      {loading ? (
+        <div className="h-64 flex items-center justify-center bg-slate-50/50 rounded-xl border">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
         </div>
+      ) : (
+        <div className="space-y-8">
+          <div className="pt-4">
+            <SectionHeader
+              title="Performance de Campanhas"
+              cols={tableCols}
+              visibleCols={visibleCols}
+              setVisibleCols={setVisibleCols}
+              onExpand={() => setExpandedState((prev) => ({ ...prev, camp: true }))}
+            />
+            <ComparisonTable
+              data={currMergedCamp}
+              onUpdate={updatePerformance}
+              onBulkUpdate={updateBulkPerformance}
+              onDelete={deletePerformance}
+              onBulkDelete={deleteBulkPerformance}
+              onAddRow={() =>
+                addPerformance({
+                  campanha_nome: 'Nova Campanha',
+                  data_inicio: format(new Date(), 'yyyy-MM-dd'),
+                  data_fim: format(new Date(), 'yyyy-MM-dd'),
+                })
+              }
+              visibleCols={visibleCols}
+            />
+          </div>
 
-        <div className="pt-4">
-          <SectionHeader
-            title="Outros Canais"
-            cols={otherCols}
-            visibleCols={visibleOtherCols}
-            setVisibleCols={setVisibleOtherCols}
-            onExpand={() => setExpandedState((prev) => ({ ...prev, other: true }))}
-          />
-          <OtherChannelsTable
-            data={currMergedOther}
-            onUpdate={handleUpdateOtherGeneric}
-            onBulkUpdate={handleBulkUpdateOtherGeneric}
-            onDelete={handleDeleteOtherGeneric}
-            onBulkDelete={handleBulkDeleteOtherGeneric}
-            visibleCols={visibleOtherCols}
-          />
+          <div className="pt-4">
+            <SectionHeader
+              title="Outros Canais"
+              cols={otherCols}
+              visibleCols={visibleOtherCols}
+              setVisibleCols={setVisibleOtherCols}
+              onExpand={() => setExpandedState((prev) => ({ ...prev, other: true }))}
+            />
+            <OtherChannelsTable
+              data={currMergedOther}
+              onUpdate={updateOutrosCanais}
+              onBulkUpdate={updateBulkOutrosCanais}
+              onDelete={deleteOutrosCanais}
+              onBulkDelete={deleteBulkOutrosCanais}
+              onAddRow={() =>
+                addOutrosCanais({
+                  canal_nome: 'Novo Canal',
+                  data_inicio: format(new Date(), 'yyyy-MM-dd'),
+                  data_fim: format(new Date(), 'yyyy-MM-dd'),
+                })
+              }
+              visibleCols={visibleOtherCols}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <Dialog
         open={expandedState.camp}
@@ -665,12 +293,18 @@ export default function Index() {
           </DialogHeader>
           <div className="flex-1 overflow-hidden min-h-0 -mx-2 sm:-mx-0">
             <ComparisonTable
-              mergedData={currMergedCamp}
-              dateRange={{ from: dates.currentFrom, to: dates.currentTo }}
-              onUpdate={handleUpdateCampGeneric}
-              onBulkUpdate={handleBulkUpdateCampGeneric}
-              onDelete={handleDeleteCampGeneric}
-              onBulkDelete={handleBulkDeleteCampGeneric}
+              data={currMergedCamp}
+              onUpdate={updatePerformance}
+              onBulkUpdate={updateBulkPerformance}
+              onDelete={deletePerformance}
+              onBulkDelete={deleteBulkPerformance}
+              onAddRow={() =>
+                addPerformance({
+                  campanha_nome: 'Nova Campanha',
+                  data_inicio: format(new Date(), 'yyyy-MM-dd'),
+                  data_fim: format(new Date(), 'yyyy-MM-dd'),
+                })
+              }
               visibleCols={visibleCols}
               isExpanded={true}
             />
@@ -689,10 +323,17 @@ export default function Index() {
           <div className="flex-1 overflow-hidden min-h-0 -mx-2 sm:-mx-0">
             <OtherChannelsTable
               data={currMergedOther}
-              onUpdate={handleUpdateOtherGeneric}
-              onBulkUpdate={handleBulkUpdateOtherGeneric}
-              onDelete={handleDeleteOtherGeneric}
-              onBulkDelete={handleBulkDeleteOtherGeneric}
+              onUpdate={updateOutrosCanais}
+              onBulkUpdate={updateBulkOutrosCanais}
+              onDelete={deleteOutrosCanais}
+              onBulkDelete={deleteBulkOutrosCanais}
+              onAddRow={() =>
+                addOutrosCanais({
+                  canal_nome: 'Novo Canal',
+                  data_inicio: format(new Date(), 'yyyy-MM-dd'),
+                  data_fim: format(new Date(), 'yyyy-MM-dd'),
+                })
+              }
               visibleCols={visibleOtherCols}
               isExpanded={true}
             />

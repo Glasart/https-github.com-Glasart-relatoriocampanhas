@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Settings2, Trash2, RotateCcw, GripVertical } from 'lucide-react'
+import { Settings2, Trash2, Plus } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -35,47 +35,55 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { format, parseISO } from 'date-fns'
 
 function EditableCell({
   value,
   onSave,
-  format = 'number',
+  type = 'number',
+  formatStyle = 'number',
   disabled = false,
 }: {
-  value: number | undefined
-  onSave: (val: number) => void
-  format?: 'number' | 'currency' | 'percent'
+  value: any
+  onSave: (val: any) => void
+  type?: 'text' | 'number' | 'date'
+  formatStyle?: 'number' | 'currency' | 'percent' | 'text' | 'date'
   disabled?: boolean
 }) {
-  const safeValue = value || 0
   const [isEditing, setIsEditing] = useState(false)
-  const [localVal, setLocalVal] = useState(safeValue.toString())
+  const [localVal, setLocalVal] = useState(value?.toString() || '')
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    setLocalVal(safeValue.toString())
-  }, [safeValue])
+    if (type === 'date' && value) setLocalVal(value)
+    else setLocalVal(value?.toString() || '')
+  }, [value, type])
 
   if (disabled) {
-    return <div className="text-center text-muted-foreground min-w-[60px] ml-auto">-</div>
+    let display = value
+    if (formatStyle === 'percent') display = formatPercent(Number(value) || 0)
+    else if (formatStyle === 'number') display = formatNumber(Number(value) || 0)
+    else if (formatStyle === 'currency') display = formatCurrency(Number(value) || 0)
+    return (
+      <div className="text-center text-muted-foreground min-w-[60px] px-2 py-1.5">{display}</div>
+    )
   }
 
   const handleBlur = () => {
     setIsEditing(false)
-    const parsed = parseFloat(localVal)
-    if (!isNaN(parsed) && parsed !== safeValue) {
-      onSave(parsed)
-    } else {
-      setLocalVal(safeValue.toString())
+    if (type === 'number') {
+      const parsed = parseFloat(localVal)
+      if (!isNaN(parsed) && parsed !== value) onSave(parsed)
+      else setLocalVal(value?.toString() || '0')
+    } else if (type === 'text' || type === 'date') {
+      if (localVal !== value) onSave(localVal)
     }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      inputRef.current?.blur()
-    }
+    if (e.key === 'Enter') inputRef.current?.blur()
     if (e.key === 'Escape') {
-      setLocalVal(safeValue.toString())
+      setLocalVal(value?.toString() || '')
       setIsEditing(false)
     }
   }
@@ -84,55 +92,71 @@ function EditableCell({
     return (
       <Input
         ref={inputRef}
-        type="number"
+        type={type}
         value={localVal}
         onChange={(e) => setLocalVal(e.target.value)}
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         autoFocus
-        className="h-8 w-24 text-right px-2 py-1 text-xs font-mono bg-white border-blue-400 focus-visible:ring-1 focus-visible:ring-blue-400 ml-auto"
+        className={cn(
+          'h-8 px-2 py-1 text-xs bg-white border-blue-400 focus-visible:ring-1 focus-visible:ring-blue-400',
+          type === 'number' ? 'text-right w-24 ml-auto font-mono' : 'w-full',
+        )}
       />
     )
   }
 
-  const displayValue =
-    format === 'currency'
-      ? formatCurrency(safeValue)
-      : format === 'percent'
-        ? formatPercent(safeValue)
-        : formatNumber(safeValue)
+  let displayValue = value
+  if (type === 'number') {
+    const num = Number(value) || 0
+    displayValue =
+      formatStyle === 'currency'
+        ? formatCurrency(num)
+        : formatStyle === 'percent'
+          ? formatPercent(num)
+          : formatNumber(num)
+  } else if (type === 'date' && value) {
+    try {
+      displayValue = format(parseISO(value), 'dd/MM/yyyy')
+    } catch (e) {
+      displayValue = value
+    }
+  }
 
   return (
     <div
-      className="cursor-pointer hover:bg-blue-50/50 hover:ring-1 hover:ring-blue-200 px-2 py-1.5 rounded transition-all min-w-[60px] text-right font-mono ml-auto"
+      className={cn(
+        'cursor-pointer hover:bg-blue-50/50 hover:ring-1 hover:ring-blue-200 px-2 py-1.5 rounded transition-all min-h-[28px] overflow-hidden text-ellipsis whitespace-nowrap',
+        type === 'number' ? 'text-right min-w-[60px] ml-auto font-mono' : 'w-full',
+      )}
       onClick={() => setIsEditing(true)}
       title="Clique para editar"
     >
-      {displayValue}
+      {displayValue || '-'}
     </div>
   )
 }
 
 interface OtherChannelsTableProps {
   data: any[]
-  onUpdate: (channel: string, field: string, value: number) => void
-  onBulkUpdate?: (channels: string[], updates: Record<string, number>) => void
-  onDelete?: (channel: string) => void
-  onBulkDelete?: (channels: string[]) => void
-  onReorder?: (draggedId: string, targetId: string) => void
+  onUpdate: (id: string, field: string, value: any) => void
+  onBulkUpdate?: (ids: string[], updates: Record<string, any>) => void
+  onDelete?: (id: string) => void
+  onBulkDelete?: (ids: string[]) => void
+  onAddRow?: () => void
   visibleCols?: Record<string, boolean>
   isExpanded?: boolean
 }
 
 const BULK_EDIT_FIELDS_OTHER = [
-  { id: 'accesses', label: 'Acessos' },
-  { id: 'clicks', label: 'Cliques' },
-  { id: 'conversations', label: 'Conversas' },
+  { id: 'acessos', label: 'Acessos' },
+  { id: 'cliques', label: 'Cliques' },
+  { id: 'conversas', label: 'Conversas' },
   { id: 'leads', label: 'Leads' },
-  { id: 'quotesQty', label: 'Orç. (Qtd)' },
-  { id: 'quotesValue', label: 'Orç. (R$)' },
-  { id: 'ordersQty', label: 'Ped. (Qtd)' },
-  { id: 'ordersValue', label: 'Ped. (R$)' },
+  { id: 'orcamentos_qtd', label: 'Orçamentos (Qtd)' },
+  { id: 'orcamentos_valor', label: 'Orçamentos (Valor)' },
+  { id: 'pedidos_qtd', label: 'Pedidos (Qtd)' },
+  { id: 'pedidos_valor', label: 'Pedidos (Valor)' },
 ]
 
 export function OtherChannelsTable({
@@ -141,20 +165,21 @@ export function OtherChannelsTable({
   onBulkUpdate,
   onDelete,
   onBulkDelete,
-  onReorder,
+  onAddRow,
   visibleCols = {
-    channel: true,
-    accesses: true,
-    clicks: true,
-    conversations: true,
+    data_inicio: true,
+    data_fim: true,
+    canal_nome: true,
+    acessos: true,
+    cliques: true,
+    conversas: true,
     leads: true,
-    quotesQty: true,
-    quotesValue: true,
-    ordersQty: true,
-    ordersValue: true,
-    convLeadQuote: true,
-    convQuoteOrder: true,
-    userName: true,
+    orcamentos_qtd: true,
+    orcamentos_valor: true,
+    pedidos_qtd: true,
+    pedidos_valor: true,
+    lead_orcamento_pct: true,
+    orcamento_pedido_pct: true,
   },
   isExpanded = false,
 }: OtherChannelsTableProps) {
@@ -163,18 +188,15 @@ export function OtherChannelsTable({
   const [bulkFields, setBulkFields] = useState<Record<string, boolean>>({})
   const [bulkValue, setBulkValue] = useState<string>('0')
 
-  const [draggedId, setDraggedId] = useState<string | null>(null)
-  const [dragOverId, setDragOverId] = useState<string | null>(null)
-
   const handleSelectAll = (checked: boolean) => {
-    if (checked) setSelectedIds(new Set(data.map((r) => r.channel)))
+    if (checked) setSelectedIds(new Set(data.map((r) => r.id)))
     else setSelectedIds(new Set())
   }
 
-  const handleSelectRow = (channel: string, checked: boolean) => {
+  const handleSelectRow = (id: string, checked: boolean) => {
     const newSet = new Set(selectedIds)
-    if (checked) newSet.add(channel)
-    else newSet.delete(channel)
+    if (checked) newSet.add(id)
+    else newSet.delete(id)
     setSelectedIds(newSet)
   }
 
@@ -187,16 +209,8 @@ export function OtherChannelsTable({
       if (isSelected) updates[field] = val
     })
 
-    if (Object.keys(updates).length > 0) {
-      if (onBulkUpdate) {
-        onBulkUpdate(Array.from(selectedIds), updates)
-      } else {
-        selectedIds.forEach((channel) => {
-          Object.keys(updates).forEach((field) => {
-            onUpdate(channel, field, val)
-          })
-        })
-      }
+    if (Object.keys(updates).length > 0 && onBulkUpdate) {
+      onBulkUpdate(Array.from(selectedIds), updates)
     }
 
     setIsBulkOpen(false)
@@ -205,99 +219,66 @@ export function OtherChannelsTable({
     setBulkValue('0')
   }
 
-  const handleBulkZero = () => {
-    const updates: Record<string, number> = {}
-    BULK_EDIT_FIELDS_OTHER.forEach((f) => {
-      updates[f.id] = 0
-    })
-
-    if (onBulkUpdate) {
-      onBulkUpdate(Array.from(selectedIds), updates)
-    } else {
-      selectedIds.forEach((channel) => {
-        Object.keys(updates).forEach((field) => {
-          onUpdate(channel, field, 0)
-        })
-      })
-    }
-    setSelectedIds(new Set())
-  }
-
-  const onDragStartRow = (e: React.DragEvent, id: string) => {
-    setDraggedId(id)
-    e.dataTransfer.effectAllowed = 'move'
-  }
-
-  const onDragOverRow = (e: React.DragEvent, id: string) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-    if (draggedId !== id) {
-      setDragOverId(id)
-    }
-  }
-
-  const onDropRow = (e: React.DragEvent, id: string) => {
-    e.preventDefault()
-    if (draggedId && draggedId !== id && onReorder) {
-      onReorder(draggedId, id)
-    }
-    setDraggedId(null)
-    setDragOverId(null)
-  }
-
-  const onDragEndRow = () => {
-    setDraggedId(null)
-    setDragOverId(null)
-  }
-
   const isAllSelected = data.length > 0 && selectedIds.size === data.length
 
   return (
     <div
       className={cn(
-        'rounded-xl border bg-white shadow-sm overflow-hidden relative print:border-none print:shadow-none flex flex-col',
+        'rounded-xl border bg-white shadow-sm overflow-hidden relative flex flex-col',
         isExpanded ? 'h-full' : '',
       )}
     >
-      <div className="overflow-auto flex-1 w-full min-h-0 print:overflow-visible pb-16">
-        <Table className="min-w-[1400px] print:min-w-full border-collapse text-xs">
-          <TableHeader className="bg-slate-50 sticky top-0 z-20 print:static shadow-sm">
+      <div className="overflow-auto flex-1 w-full min-h-0 pb-16">
+        <Table className="min-w-[1200px] border-collapse text-xs">
+          <TableHeader className="bg-slate-50 sticky top-0 z-20 shadow-sm">
             <TableRow>
-              {onReorder && (
-                <TableHead className="w-[30px] border-r px-1 text-center bg-white"></TableHead>
-              )}
               <TableHead className="w-[40px] text-center border-r px-2 bg-white">
                 <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} />
               </TableHead>
-              {visibleCols.channel && (
-                <TableHead className="font-bold border-r whitespace-nowrap">Canal</TableHead>
+              {visibleCols.data_inicio && (
+                <TableHead className="whitespace-nowrap border-r">Data Início</TableHead>
               )}
-              {visibleCols.accesses && <TableHead className="text-right">Acessos</TableHead>}
-              {visibleCols.clicks && <TableHead className="text-right">Cliques</TableHead>}
-              {visibleCols.conversations && (
-                <TableHead className="text-right border-r">Conversas</TableHead>
+              {visibleCols.data_fim && (
+                <TableHead className="whitespace-nowrap border-r">Data Fim</TableHead>
               )}
-              {visibleCols.leads && <TableHead className="text-right">Leads</TableHead>}
-              {visibleCols.quotesQty && (
-                <TableHead className="text-right">Orçamentos (Qtd)</TableHead>
-              )}
-              {visibleCols.quotesValue && (
-                <TableHead className="text-right border-r">Orçamentos (R$)</TableHead>
-              )}
-              {visibleCols.ordersQty && <TableHead className="text-right">Pedidos (Qtd)</TableHead>}
-              {visibleCols.ordersValue && (
-                <TableHead className="text-right border-r">Pedidos (R$)</TableHead>
-              )}
-              {visibleCols.convLeadQuote && (
-                <TableHead className="text-right whitespace-nowrap">% Lead → Orç.</TableHead>
-              )}
-              {visibleCols.convQuoteOrder && (
-                <TableHead className="text-right border-r whitespace-nowrap">
-                  % Orç. → Ped.
+              {visibleCols.canal_nome && (
+                <TableHead className="whitespace-nowrap border-r min-w-[150px]">
+                  Nome do Canal
                 </TableHead>
               )}
-              {visibleCols.userName && (
-                <TableHead className="text-center">Usuário Responsável</TableHead>
+              {visibleCols.acessos && (
+                <TableHead className="text-right whitespace-nowrap">Acessos</TableHead>
+              )}
+              {visibleCols.cliques && (
+                <TableHead className="text-right whitespace-nowrap">Cliques</TableHead>
+              )}
+              {visibleCols.conversas && (
+                <TableHead className="text-right whitespace-nowrap border-r">Conversas</TableHead>
+              )}
+              {visibleCols.leads && (
+                <TableHead className="text-right whitespace-nowrap">Leads</TableHead>
+              )}
+              {visibleCols.orcamentos_qtd && (
+                <TableHead className="text-right whitespace-nowrap">Orçamentos (Qtd)</TableHead>
+              )}
+              {visibleCols.orcamentos_valor && (
+                <TableHead className="text-right whitespace-nowrap border-r">
+                  Orçamentos (R$)
+                </TableHead>
+              )}
+              {visibleCols.pedidos_qtd && (
+                <TableHead className="text-right whitespace-nowrap">Pedidos (Qtd)</TableHead>
+              )}
+              {visibleCols.pedidos_valor && (
+                <TableHead className="text-right whitespace-nowrap border-r">
+                  Pedidos (R$)
+                </TableHead>
+              )}
+              {visibleCols.lead_orcamento_pct && (
+                <TableHead className="text-right whitespace-nowrap">% Lead → Orç.</TableHead>
+              )}
+              {visibleCols.orcamento_pedido_pct && (
+                <TableHead className="text-right whitespace-nowrap">% Orç. → Ped.</TableHead>
               )}
               {onDelete && (
                 <TableHead className="text-center border-l whitespace-nowrap w-[40px]">
@@ -309,184 +290,172 @@ export function OtherChannelsTable({
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={17} className="text-center h-32 text-muted-foreground">
+                <TableCell colSpan={15} className="text-center h-32 text-muted-foreground">
                   Nenhum dado encontrado.
                 </TableCell>
               </TableRow>
             ) : (
-              data.map((row) => {
-                const isGabi = row.channel === 'Assistente virtual - Gabi'
-                const isAcesso = row.channel === 'Acessos ao site'
-
-                const leadToQuote = row.leads > 0 ? row.quotesQty / row.leads : 0
-                const quoteToOrder = row.quotesQty > 0 ? row.ordersQty / row.quotesQty : 0
-
-                return (
-                  <TableRow
-                    key={row.channel}
-                    className={cn(
-                      'hover:bg-slate-50/50 group',
-                      draggedId === row.channel && 'opacity-50 bg-indigo-50/50',
-                      dragOverId === row.channel &&
-                        'border-t-2 border-t-indigo-500 shadow-[0_-2px_0_rgba(99,102,241,1)] z-10 relative',
-                    )}
-                    data-state={selectedIds.has(row.channel) ? 'selected' : undefined}
-                    onDragOver={onReorder ? (e) => onDragOverRow(e, row.channel) : undefined}
-                    onDrop={onReorder ? (e) => onDropRow(e, row.channel) : undefined}
-                  >
-                    {onReorder && (
-                      <TableCell className="w-[30px] p-0 text-center align-middle border-r bg-white/50">
-                        <div
-                          draggable
-                          onDragStart={(e) => onDragStartRow(e, row.channel)}
-                          onDragEnd={onDragEndRow}
-                          className="cursor-grab active:cursor-grabbing hover:bg-slate-200 p-1 rounded mx-auto inline-flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
-                        >
-                          <GripVertical className="w-4 h-4" />
-                        </div>
-                      </TableCell>
-                    )}
-                    <TableCell className="border-r py-2 px-2 text-center w-[40px]">
-                      <Checkbox
-                        checked={selectedIds.has(row.channel)}
-                        onCheckedChange={(c) => handleSelectRow(row.channel, !!c)}
+              data.map((row) => (
+                <TableRow
+                  key={row.id}
+                  className="hover:bg-slate-50/50"
+                  data-state={selectedIds.has(row.id) ? 'selected' : undefined}
+                >
+                  <TableCell className="border-r py-2 px-2 text-center w-[40px]">
+                    <Checkbox
+                      checked={selectedIds.has(row.id)}
+                      onCheckedChange={(c) => handleSelectRow(row.id, !!c)}
+                    />
+                  </TableCell>
+                  {visibleCols.data_inicio && (
+                    <TableCell className="py-1 px-2 border-r max-w-[100px]">
+                      <EditableCell
+                        value={row.data_inicio}
+                        type="date"
+                        formatStyle="date"
+                        onSave={(v) => onUpdate(row.id, 'data_inicio', v)}
                       />
                     </TableCell>
-                    {visibleCols.channel && (
-                      <TableCell className="font-medium border-r bg-slate-50/30 whitespace-nowrap">
-                        {row.channel}
-                      </TableCell>
-                    )}
-                    {visibleCols.accesses && (
-                      <TableCell className="py-2 px-2">
-                        <EditableCell
-                          value={row.accesses}
-                          disabled={!isGabi && !isAcesso}
-                          onSave={(v) => onUpdate(row.channel, 'accesses', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.clicks && (
-                      <TableCell className="py-2 px-2">
-                        <EditableCell
-                          value={row.clicks}
-                          disabled={!isGabi}
-                          onSave={(v) => onUpdate(row.channel, 'clicks', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.conversations && (
-                      <TableCell className="py-2 px-2 border-r">
-                        <EditableCell
-                          value={row.conversations}
-                          disabled={!isGabi}
-                          onSave={(v) => onUpdate(row.channel, 'conversations', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.leads && (
-                      <TableCell className="py-2 px-2">
-                        <EditableCell
-                          value={row.leads}
-                          onSave={(v) => onUpdate(row.channel, 'leads', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.quotesQty && (
-                      <TableCell className="py-2 px-2">
-                        <EditableCell
-                          value={row.quotesQty}
-                          onSave={(v) => onUpdate(row.channel, 'quotesQty', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.quotesValue && (
-                      <TableCell className="py-2 px-2 border-r">
-                        <EditableCell
-                          value={row.quotesValue}
-                          format="currency"
-                          onSave={(v) => onUpdate(row.channel, 'quotesValue', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.ordersQty && (
-                      <TableCell className="py-2 px-2">
-                        <EditableCell
-                          value={row.ordersQty}
-                          onSave={(v) => onUpdate(row.channel, 'ordersQty', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.ordersValue && (
-                      <TableCell className="py-2 px-2 border-r">
-                        <EditableCell
-                          value={row.ordersValue}
-                          format="currency"
-                          onSave={(v) => onUpdate(row.channel, 'ordersValue', v)}
-                        />
-                      </TableCell>
-                    )}
-                    {visibleCols.convLeadQuote && (
-                      <TableCell className="text-right font-mono font-medium py-3 px-4 bg-slate-50/30">
-                        {formatPercent(leadToQuote)}
-                      </TableCell>
-                    )}
-                    {visibleCols.convQuoteOrder && (
-                      <TableCell className="text-right font-mono font-medium border-r py-3 px-4 bg-slate-50/30">
-                        {formatPercent(quoteToOrder)}
-                      </TableCell>
-                    )}
-                    {visibleCols.userName && (
-                      <TableCell className="text-center py-2 px-2 min-w-[140px]">
-                        {row.userName ? (
-                          <Badge
-                            variant="outline"
-                            style={{
-                              borderColor: row.userColor,
-                              color: row.userColor,
-                              backgroundColor: `${row.userColor}15`,
-                            }}
-                          >
-                            {row.userName}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground">-</span>
-                        )}
-                      </TableCell>
-                    )}
-                    {onDelete && (
-                      <TableCell className="border-l py-2 px-2 text-center w-[40px]">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onDelete(row.channel)
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    )}
-                  </TableRow>
-                )
-              })
+                  )}
+                  {visibleCols.data_fim && (
+                    <TableCell className="py-1 px-2 border-r max-w-[100px]">
+                      <EditableCell
+                        value={row.data_fim}
+                        type="date"
+                        formatStyle="date"
+                        onSave={(v) => onUpdate(row.id, 'data_fim', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.canal_nome && (
+                    <TableCell className="py-1 px-2 border-r">
+                      <EditableCell
+                        value={row.canal_nome}
+                        type="text"
+                        formatStyle="text"
+                        onSave={(v) => onUpdate(row.id, 'canal_nome', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.acessos && (
+                    <TableCell className="py-1 px-2">
+                      <EditableCell
+                        value={row.acessos}
+                        onSave={(v) => onUpdate(row.id, 'acessos', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.cliques && (
+                    <TableCell className="py-1 px-2">
+                      <EditableCell
+                        value={row.cliques}
+                        onSave={(v) => onUpdate(row.id, 'cliques', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.conversas && (
+                    <TableCell className="py-1 px-2 border-r">
+                      <EditableCell
+                        value={row.conversas}
+                        onSave={(v) => onUpdate(row.id, 'conversas', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.leads && (
+                    <TableCell className="py-1 px-2">
+                      <EditableCell
+                        value={row.leads}
+                        onSave={(v) => onUpdate(row.id, 'leads', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.orcamentos_qtd && (
+                    <TableCell className="py-1 px-2">
+                      <EditableCell
+                        value={row.orcamentos_qtd}
+                        onSave={(v) => onUpdate(row.id, 'orcamentos_qtd', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.orcamentos_valor && (
+                    <TableCell className="py-1 px-2 border-r">
+                      <EditableCell
+                        value={row.orcamentos_valor}
+                        formatStyle="currency"
+                        onSave={(v) => onUpdate(row.id, 'orcamentos_valor', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.pedidos_qtd && (
+                    <TableCell className="py-1 px-2">
+                      <EditableCell
+                        value={row.pedidos_qtd}
+                        onSave={(v) => onUpdate(row.id, 'pedidos_qtd', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.pedidos_valor && (
+                    <TableCell className="py-1 px-2 border-r">
+                      <EditableCell
+                        value={row.pedidos_valor}
+                        formatStyle="currency"
+                        onSave={(v) => onUpdate(row.id, 'pedidos_valor', v)}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.lead_orcamento_pct && (
+                    <TableCell className="py-1 px-2 bg-slate-50/30">
+                      <EditableCell
+                        value={row.lead_orcamento_pct}
+                        disabled
+                        formatStyle="percent"
+                        onSave={() => {}}
+                      />
+                    </TableCell>
+                  )}
+                  {visibleCols.orcamento_pedido_pct && (
+                    <TableCell className="py-1 px-2 bg-slate-50/30">
+                      <EditableCell
+                        value={row.orcamento_pedido_pct}
+                        disabled
+                        formatStyle="percent"
+                        onSave={() => {}}
+                      />
+                    </TableCell>
+                  )}
+                  {onDelete && (
+                    <TableCell className="border-l py-1.5 px-2 text-center w-[40px]">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => onDelete(row.id)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))
             )}
           </TableBody>
         </Table>
       </div>
 
+      <div className="p-3 border-t bg-slate-50 flex justify-between items-center">
+        <Button variant="outline" size="sm" onClick={onAddRow} className="gap-2">
+          <Plus className="w-4 h-4" /> Adicionar Linha
+        </Button>
+      </div>
+
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-sm text-white px-4 py-3 rounded-xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] flex items-center gap-4 z-50 border border-slate-800 animate-in slide-in-from-bottom-8">
-          <div className="flex items-center gap-2">
-            <Badge
-              variant="secondary"
-              className="bg-slate-800 text-white hover:bg-slate-700 border-none"
-            >
-              {selectedIds.size} selecionados
-            </Badge>
-          </div>
+          <Badge
+            variant="secondary"
+            className="bg-slate-800 text-white hover:bg-slate-700 border-none"
+          >
+            {selectedIds.size} selecionados
+          </Badge>
           <div className="w-px h-4 bg-slate-700 mx-1"></div>
 
           <Dialog open={isBulkOpen} onOpenChange={setIsBulkOpen}>
@@ -496,16 +465,15 @@ export function OtherChannelsTable({
                 size="sm"
                 className="h-8 text-slate-200 hover:text-white hover:bg-slate-800 gap-2"
               >
-                <Settings2 className="w-4 h-4" />
-                Editar em Massa
+                <Settings2 className="w-4 h-4" /> Editar em Massa
               </Button>
             </DialogTrigger>
             <DialogContent className="sm:max-w-[425px]">
               <DialogHeader>
                 <DialogTitle>Edição em Massa</DialogTitle>
                 <DialogDescription>
-                  Selecione os campos e defina o novo valor para os {selectedIds.size} canais
-                  selecionadas.
+                  Selecione os campos numéricos e defina o novo valor para os {selectedIds.size}{' '}
+                  registros selecionados.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
@@ -555,7 +523,7 @@ export function OtherChannelsTable({
                       <AlertDialogTitle>Atenção</AlertDialogTitle>
                       <AlertDialogDescription>
                         Tem certeza que deseja editar esses dados em massa? Essa ação afetará{' '}
-                        {selectedIds.size} registros.
+                        {selectedIds.size} registros e será salva no banco.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -573,32 +541,6 @@ export function OtherChannelsTable({
             </DialogContent>
           </Dialog>
 
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 text-slate-200 hover:text-white hover:bg-slate-800 gap-2"
-              >
-                <RotateCcw className="w-4 h-4" />
-                Zerar Valores
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Zerar Valores</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Tem certeza que deseja zerar todas as métricas dos {selectedIds.size} canais
-                  selecionados?
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction onClick={handleBulkZero}>Confirmar</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-
           {onBulkDelete && (
             <AlertDialog>
               <AlertDialogTrigger asChild>
@@ -607,16 +549,15 @@ export function OtherChannelsTable({
                   size="sm"
                   className="h-8 text-red-400 hover:text-red-300 hover:bg-slate-800 gap-2"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  Excluir Selecionados
+                  <Trash2 className="w-4 h-4" /> Excluir Selecionados
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>Excluir Registros</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Tem certeza que deseja excluir os {selectedIds.size} canais selecionados? Esta
-                    ação não pode ser desfeita.
+                    Tem certeza que deseja excluir os {selectedIds.size} registros selecionados do
+                    banco de dados? Esta ação não pode ser desfeita.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

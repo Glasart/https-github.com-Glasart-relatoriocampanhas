@@ -29,7 +29,6 @@ const navItems = [
   { title: 'Comparativo Semanal', path: '/', icon: BarChart2 },
   { title: 'Dados Consolidados', path: '/consolidated', icon: PieChart },
   { title: 'Previsibilidade', path: '/predictability', icon: Target },
-  { title: 'Base de Dados', path: '/database', icon: Database },
   { title: 'Integrações', path: '/integrations', icon: Plug },
   { title: 'Análise Semanal', path: '/analysis', icon: BrainCircuit },
   { title: 'Histórico Relatórios', path: '/history', icon: History },
