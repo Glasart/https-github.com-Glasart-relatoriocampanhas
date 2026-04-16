@@ -13,7 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { formatCurrency, formatNumber, formatPercent } from '@/lib/formatters'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Settings2, Trash2, Plus } from 'lucide-react'
+import { Settings2, Trash2, Plus, GripVertical } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import {
   Dialog,
@@ -36,6 +36,14 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { format, parseISO } from 'date-fns'
+
+export interface ColumnDef {
+  id: string
+  label: string
+  type?: 'text' | 'number' | 'date'
+  formatStyle?: 'number' | 'currency' | 'percent' | 'text' | 'date'
+  readOnly?: boolean
+}
 
 function EditableCell({
   value,
@@ -67,8 +75,22 @@ function EditableCell({
     if (formatStyle === 'percent') display = formatPercent(Number(value) || 0)
     else if (formatStyle === 'number') display = formatNumber(Number(value) || 0)
     else if (formatStyle === 'currency') display = formatCurrency(Number(value) || 0)
+    else if (type === 'date' && value) {
+      try {
+        display = format(parseISO(value), 'dd/MM/yyyy')
+      } catch (e) {
+        display = value
+      }
+    }
     return (
-      <div className="text-center text-muted-foreground min-w-[60px] px-2 py-1.5">{display}</div>
+      <div
+        className={cn(
+          'text-muted-foreground min-w-[60px] px-2 py-1.5',
+          type === 'number' ? 'text-right' : '',
+        )}
+      >
+        {display || '-'}
+      </div>
     )
   }
 
@@ -89,9 +111,7 @@ function EditableCell({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      inputRef.current?.blur()
-    }
+    if (e.key === 'Enter') inputRef.current?.blur()
     if (e.key === 'Escape') {
       setLocalVal(value?.toString() || '')
       setIsEditing(false)
@@ -110,7 +130,7 @@ function EditableCell({
         autoFocus
         className={cn(
           'h-8 px-2 py-1 text-xs bg-white border-blue-400 focus-visible:ring-1 focus-visible:ring-blue-400',
-          type === 'number' ? 'text-right w-24 ml-auto font-mono' : 'w-full',
+          type === 'number' ? 'text-right w-24 ml-auto font-mono' : 'w-full min-w-[120px]',
         )}
       />
     )
@@ -137,7 +157,7 @@ function EditableCell({
     <div
       className={cn(
         'cursor-pointer hover:bg-blue-50/50 hover:ring-1 hover:ring-blue-200 px-2 py-1.5 rounded transition-all min-h-[28px] overflow-hidden text-ellipsis whitespace-nowrap',
-        type === 'number' ? 'text-right min-w-[60px] ml-auto font-mono' : 'w-full',
+        type === 'number' ? 'text-right min-w-[60px] ml-auto font-mono' : 'w-full min-w-[120px]',
       )}
       onClick={() => setIsEditing(true)}
       title="Clique para editar"
@@ -149,42 +169,29 @@ function EditableCell({
 
 interface ComparisonTableProps {
   data: any[]
+  columns: ColumnDef[]
   onUpdate: (id: string, field: string, value: any) => void
   onBulkUpdate?: (ids: string[], updates: Record<string, any>) => void
   onDelete?: (id: string) => void
   onBulkDelete?: (ids: string[]) => void
   onAddRow?: () => void
+  onReorder?: (sourceId: string, targetId: string) => void
+  onPasteData?: (rows: string[][]) => void
   visibleCols?: Record<string, boolean>
   isExpanded?: boolean
 }
 
-const BULK_EDIT_FIELDS = [
-  { id: 'impressoes', label: 'Impressões', type: 'number' },
-  { id: 'alcance', label: 'Alcance', type: 'number' },
-  { id: 'cliques', label: 'Cliques', type: 'number' },
-  { id: 'leads', label: 'Leads', type: 'number' },
-  { id: 'conversoes', label: 'Conversões', type: 'number' },
-]
-
 export function ComparisonTable({
   data,
+  columns,
   onUpdate,
   onBulkUpdate,
   onDelete,
   onBulkDelete,
   onAddRow,
-  visibleCols = {
-    data_inicio: true,
-    data_fim: true,
-    campanha_nome: true,
-    impressoes: true,
-    alcance: true,
-    cliques: true,
-    ctr: true,
-    leads: true,
-    conversoes: true,
-    roi: true,
-  },
+  onReorder,
+  onPasteData,
+  visibleCols = {},
   isExpanded = false,
 }: ComparisonTableProps) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -223,7 +230,41 @@ export function ComparisonTable({
     setBulkValue('0')
   }
 
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    e.dataTransfer.setData('text/plain', id)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }
+
+  const handleDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault()
+    const sourceId = e.dataTransfer.getData('text/plain')
+    if (sourceId && sourceId !== targetId && onReorder) {
+      onReorder(sourceId, targetId)
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (!onPasteData) return
+
+    if (e.target instanceof HTMLInputElement) return
+
+    const clipboardData = e.clipboardData.getData('Text')
+    if (!clipboardData) return
+    const rows = clipboardData.split('\n').filter((r) => r.trim() !== '')
+    if (rows.length === 0) return
+
+    const parsedRows = rows.map((row) => row.split('\t'))
+    e.preventDefault()
+    onPasteData(parsedRows)
+  }
+
   const isAllSelected = data.length > 0 && selectedIds.size === data.length
+  const activeColumns = columns.filter((c) => visibleCols[c.id])
 
   return (
     <div
@@ -231,46 +272,32 @@ export function ComparisonTable({
         'rounded-xl border bg-white shadow-sm overflow-hidden relative flex flex-col',
         isExpanded ? 'h-full' : '',
       )}
+      onPaste={handlePaste}
+      tabIndex={0}
     >
       <div className="overflow-auto flex-1 w-full min-h-0 pb-16">
         <Table className="min-w-[1000px] border-collapse text-xs">
           <TableHeader className="bg-slate-50 sticky top-0 z-20 shadow-sm">
             <TableRow>
-              <TableHead className="w-[40px] text-center border-r px-2 bg-white">
+              <TableHead className="w-[40px] text-center border-r px-2 bg-white sticky left-0 z-30">
                 <Checkbox checked={isAllSelected} onCheckedChange={handleSelectAll} />
               </TableHead>
-              {visibleCols.data_inicio && (
-                <TableHead className="whitespace-nowrap border-r">Data Início</TableHead>
+              {onReorder && (
+                <TableHead className="w-[30px] border-r px-1 bg-white sticky left-[40px] z-30"></TableHead>
               )}
-              {visibleCols.data_fim && (
-                <TableHead className="whitespace-nowrap border-r">Data Fim</TableHead>
-              )}
-              {visibleCols.campanha_nome && (
-                <TableHead className="whitespace-nowrap border-r min-w-[200px]">
-                  Nome da Campanha
+
+              {activeColumns.map((col) => (
+                <TableHead
+                  key={col.id}
+                  className={cn(
+                    'whitespace-nowrap border-r',
+                    col.type === 'number' && 'text-right',
+                  )}
+                >
+                  {col.label}
                 </TableHead>
-              )}
-              {visibleCols.impressoes && (
-                <TableHead className="text-right whitespace-nowrap">Impressões</TableHead>
-              )}
-              {visibleCols.alcance && (
-                <TableHead className="text-right whitespace-nowrap">Alcance</TableHead>
-              )}
-              {visibleCols.cliques && (
-                <TableHead className="text-right whitespace-nowrap border-r">Cliques</TableHead>
-              )}
-              {visibleCols.ctr && (
-                <TableHead className="text-right whitespace-nowrap border-r">CTR (%)</TableHead>
-              )}
-              {visibleCols.leads && (
-                <TableHead className="text-right whitespace-nowrap">Leads</TableHead>
-              )}
-              {visibleCols.conversoes && (
-                <TableHead className="text-right whitespace-nowrap border-r">Conversões</TableHead>
-              )}
-              {visibleCols.roi && (
-                <TableHead className="text-right whitespace-nowrap">ROI (%)</TableHead>
-              )}
+              ))}
+
               {onDelete && (
                 <TableHead className="text-center border-l whitespace-nowrap w-[40px]">
                   Ações
@@ -281,8 +308,12 @@ export function ComparisonTable({
           <TableBody>
             {data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={12} className="text-center h-32 text-muted-foreground">
-                  Nenhum dado encontrado.
+                <TableCell
+                  colSpan={activeColumns.length + 3}
+                  className="text-center h-32 text-muted-foreground"
+                >
+                  Nenhum dado encontrado. Você pode colar dados de uma planilha (Ctrl+V) ou
+                  adicionar uma linha.
                 </TableCell>
               </TableRow>
             ) : (
@@ -291,103 +322,39 @@ export function ComparisonTable({
                   key={row.id}
                   className="hover:bg-slate-50/50"
                   data-state={selectedIds.has(row.id) ? 'selected' : undefined}
+                  draggable={!!onReorder}
+                  onDragStart={(e) => handleDragStart(e, row.id)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, row.id)}
                 >
-                  <TableCell className="border-r py-2 px-2 text-center w-[40px]">
+                  <TableCell className="border-r py-2 px-2 text-center w-[40px] bg-white sticky left-0 z-10">
                     <Checkbox
                       checked={selectedIds.has(row.id)}
                       onCheckedChange={(c) => handleSelectRow(row.id, !!c)}
                     />
                   </TableCell>
-                  {visibleCols.data_inicio && (
-                    <TableCell className="py-1 px-2 border-r max-w-[120px]">
-                      <EditableCell
-                        value={row.data_inicio}
-                        type="date"
-                        formatStyle="date"
-                        onSave={(v) => onUpdate(row.id, 'data_inicio', v)}
-                      />
+
+                  {onReorder && (
+                    <TableCell className="border-r py-2 px-1 text-center w-[30px] bg-white sticky left-[40px] z-10 cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600">
+                      <GripVertical className="w-4 h-4 mx-auto" />
                     </TableCell>
                   )}
-                  {visibleCols.data_fim && (
-                    <TableCell className="py-1 px-2 border-r max-w-[120px]">
+
+                  {activeColumns.map((col) => (
+                    <TableCell
+                      key={col.id}
+                      className={cn('py-1 px-2 border-r', col.readOnly && 'bg-slate-50/30')}
+                    >
                       <EditableCell
-                        value={row.data_fim}
-                        type="date"
-                        formatStyle="date"
-                        onSave={(v) => onUpdate(row.id, 'data_fim', v)}
+                        value={row[col.id]}
+                        type={col.type}
+                        formatStyle={col.formatStyle}
+                        disabled={col.readOnly}
+                        onSave={(v) => onUpdate(row.id, col.id, v)}
                       />
                     </TableCell>
-                  )}
-                  {visibleCols.campanha_nome && (
-                    <TableCell className="py-1 px-2 border-r">
-                      <EditableCell
-                        value={row.campanha_nome}
-                        type="text"
-                        formatStyle="text"
-                        onSave={(v) => onUpdate(row.id, 'campanha_nome', v)}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleCols.impressoes && (
-                    <TableCell className="py-1 px-2">
-                      <EditableCell
-                        value={row.impressoes}
-                        onSave={(v) => onUpdate(row.id, 'impressoes', v)}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleCols.alcance && (
-                    <TableCell className="py-1 px-2">
-                      <EditableCell
-                        value={row.alcance}
-                        onSave={(v) => onUpdate(row.id, 'alcance', v)}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleCols.cliques && (
-                    <TableCell className="py-1 px-2 border-r">
-                      <EditableCell
-                        value={row.cliques}
-                        onSave={(v) => onUpdate(row.id, 'cliques', v)}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleCols.ctr && (
-                    <TableCell className="py-1 px-2 border-r bg-slate-50/30">
-                      <EditableCell
-                        value={row.ctr}
-                        disabled
-                        formatStyle="percent"
-                        onSave={() => {}}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleCols.leads && (
-                    <TableCell className="py-1 px-2">
-                      <EditableCell
-                        value={row.leads}
-                        onSave={(v) => onUpdate(row.id, 'leads', v)}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleCols.conversoes && (
-                    <TableCell className="py-1 px-2 border-r">
-                      <EditableCell
-                        value={row.conversoes}
-                        onSave={(v) => onUpdate(row.id, 'conversoes', v)}
-                      />
-                    </TableCell>
-                  )}
-                  {visibleCols.roi && (
-                    <TableCell className="py-1 px-2 bg-slate-50/30">
-                      <EditableCell
-                        value={row.roi}
-                        disabled
-                        formatStyle="percent"
-                        onSave={() => {}}
-                      />
-                    </TableCell>
-                  )}
+                  ))}
+
                   {onDelete && (
                     <TableCell className="border-l py-1.5 px-2 text-center w-[40px]">
                       <Button
@@ -411,6 +378,9 @@ export function ComparisonTable({
         <Button variant="outline" size="sm" onClick={onAddRow} className="gap-2">
           <Plus className="w-4 h-4" /> Adicionar Linha
         </Button>
+        <span className="text-xs text-slate-500">
+          Dica: Selecione a tabela e use Ctrl+V para colar dados em lote.
+        </span>
       </div>
 
       {selectedIds.size > 0 && (
@@ -452,24 +422,26 @@ export function ComparisonTable({
                 </div>
                 <div className="space-y-2">
                   <Label>Campos para atualizar</Label>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    {BULK_EDIT_FIELDS.map((f) => (
-                      <div key={f.id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={`bulk-${f.id}`}
-                          checked={!!bulkFields[f.id]}
-                          onCheckedChange={(c) =>
-                            setBulkFields((prev) => ({ ...prev, [f.id]: !!c }))
-                          }
-                        />
-                        <Label
-                          htmlFor={`bulk-${f.id}`}
-                          className="text-xs font-normal cursor-pointer"
-                        >
-                          {f.label}
-                        </Label>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-2 gap-2 mt-2 max-h-[200px] overflow-y-auto">
+                    {activeColumns
+                      .filter((c) => c.type === 'number' && !c.readOnly)
+                      .map((f) => (
+                        <div key={f.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`bulk-${f.id}`}
+                            checked={!!bulkFields[f.id]}
+                            onCheckedChange={(c) =>
+                              setBulkFields((prev) => ({ ...prev, [f.id]: !!c }))
+                            }
+                          />
+                          <Label
+                            htmlFor={`bulk-${f.id}`}
+                            className="text-xs font-normal cursor-pointer"
+                          >
+                            {f.label}
+                          </Label>
+                        </div>
+                      ))}
                   </div>
                 </div>
               </div>
@@ -521,8 +493,7 @@ export function ComparisonTable({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Excluir Registros</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Tem certeza que deseja excluir os {selectedIds.size} registros selecionados do
-                    banco de dados? Esta ação não pode ser desfeita.
+                    Tem certeza que deseja excluir os {selectedIds.size} registros selecionados?
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useAppContext } from '@/context/AppContext'
 import { MetricCard } from '@/components/MetricCard'
-import { ComparisonTable } from '@/components/ComparisonTable'
+import { ComparisonTable, ColumnDef } from '@/components/ComparisonTable'
 import { OtherChannelsTable } from '@/components/OtherChannelsTable'
 import { DatePickerWithRange } from '@/components/DatePickerWithRange'
 import { subDays, parseISO, startOfDay, endOfDay, format } from 'date-fns'
 import { Button } from '@/components/ui/button'
-import { Settings2, Maximize2 } from 'lucide-react'
+import { Settings2, Maximize2, Filter } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
@@ -14,19 +14,60 @@ import {
   DropdownMenuContent,
   DropdownMenuCheckboxItem,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { usePerformanceData } from '@/hooks/use-performance-data'
+import { useAuth } from '@/hooks/use-auth'
 
-const tableCols = [
-  { id: 'data_inicio', label: 'Data Início' },
-  { id: 'data_fim', label: 'Data Fim' },
-  { id: 'campanha_nome', label: 'Nome da Campanha' },
-  { id: 'impressoes', label: 'Impressões' },
-  { id: 'alcance', label: 'Alcance' },
-  { id: 'cliques', label: 'Cliques' },
-  { id: 'ctr', label: 'CTR (%)' },
-  { id: 'leads', label: 'Leads' },
-  { id: 'conversoes', label: 'Conversões' },
-  { id: 'roi', label: 'ROI (%)' },
+const campCols: ColumnDef[] = [
+  { id: 'data_inicio', label: 'Data Início', type: 'date', formatStyle: 'date' },
+  { id: 'data_fim', label: 'Data Fim', type: 'date', formatStyle: 'date' },
+  { id: 'plataforma', label: 'Plataforma', type: 'text', formatStyle: 'text' },
+  { id: 'campanha_nome', label: 'Nome da Campanha', type: 'text', formatStyle: 'text' },
+  { id: 'publico', label: 'Público', type: 'text', formatStyle: 'text' },
+  { id: 'investimento', label: 'Investimento', type: 'number', formatStyle: 'currency' },
+  { id: 'impressoes', label: 'Impressões', type: 'number', formatStyle: 'number' },
+  { id: 'alcance', label: 'Alcance', type: 'number', formatStyle: 'number' },
+  { id: 'cliques_base_ads', label: 'Cliques Base ADS', type: 'number', formatStyle: 'number' },
+  { id: 'cliques_base_rd', label: 'Cliques Base RD', type: 'number', formatStyle: 'number' },
+  {
+    id: 'dif_cliques',
+    label: 'Dif. Cliques',
+    type: 'number',
+    formatStyle: 'number',
+    readOnly: true,
+  },
+  { id: 'ctr', label: 'CTR (%)', type: 'number', formatStyle: 'percent', readOnly: true },
+  {
+    id: 'leads_base_planilhas_vendas',
+    label: 'Leads Planilha Vendas',
+    type: 'number',
+    formatStyle: 'number',
+  },
+  { id: 'leads_base_rd', label: 'Leads RD', type: 'number', formatStyle: 'number' },
+  { id: 'dif_leads', label: 'Dif. Leads', type: 'number', formatStyle: 'number', readOnly: true },
+  { id: 'cvl', label: 'CVL', type: 'number', formatStyle: 'number', readOnly: true },
+  { id: 'orcamentos_semana', label: 'Orçamentos Sem.', type: 'number', formatStyle: 'number' },
+  { id: 'pedidos_semana', label: 'Pedidos Sem.', type: 'number', formatStyle: 'number' },
+  {
+    id: 'leads_orcamento',
+    label: 'Leads/Orç (%)',
+    type: 'number',
+    formatStyle: 'percent',
+    readOnly: true,
+  },
+  {
+    id: 'orcamento_pedido',
+    label: 'Orç/Ped (%)',
+    type: 'number',
+    formatStyle: 'percent',
+    readOnly: true,
+  },
 ]
 
 const otherCols = [
@@ -45,16 +86,16 @@ const otherCols = [
   { id: 'orcamento_pedido_pct', label: '% Orç. → Ped.' },
 ]
 
-const SectionHeader = ({ title, cols, visibleCols, setVisibleCols, onExpand }: any) => {
+const SectionHeader = ({ title, cols, visibleCols, setVisibleCols, onExpand, extra }: any) => {
   return (
     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 gap-4">
       <h2 className="text-lg font-semibold text-slate-800">{title}</h2>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {extra}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" size="sm" className="h-8 gap-2 bg-white text-xs">
-              <Settings2 className="w-4 h-4" />
-              Colunas
+              <Settings2 className="w-4 h-4" /> Colunas
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48 max-h-80 overflow-y-auto">
@@ -84,6 +125,7 @@ const SectionHeader = ({ title, cols, visibleCols, setVisibleCols, onExpand }: a
 }
 
 export default function Index() {
+  const { user } = useAuth()
   const { filters, setFilters } = useAppContext()
   const {
     performanceData,
@@ -94,6 +136,8 @@ export default function Index() {
     deletePerformance,
     deleteBulkPerformance,
     addPerformance,
+    reorderPerformance,
+    insertBulkPerformance,
     updateOutrosCanais,
     updateBulkOutrosCanais,
     deleteOutrosCanais,
@@ -102,19 +146,11 @@ export default function Index() {
   } = usePerformanceData()
 
   const [expandedState, setExpandedState] = useState({ camp: false, other: false })
+  const [platformFilter, setPlatformFilter] = useState<string>('all')
 
-  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>({
-    data_inicio: true,
-    data_fim: true,
-    campanha_nome: true,
-    impressoes: true,
-    alcance: true,
-    cliques: true,
-    ctr: true,
-    leads: true,
-    conversoes: true,
-    roi: true,
-  })
+  const [visibleCols, setVisibleCols] = useState<Record<string, boolean>>(
+    campCols.reduce((acc, col) => ({ ...acc, [col.id]: true }), {}),
+  )
 
   const [visibleOtherCols, setVisibleOtherCols] = useState<Record<string, boolean>>({
     data_inicio: true,
@@ -149,10 +185,17 @@ export default function Index() {
     })
   }
 
-  const currMergedCamp = useMemo(
-    () => filterRows(performanceData, dates.currentFrom, dates.currentTo),
-    [performanceData, dates],
-  )
+  const platforms = useMemo(() => {
+    const set = new Set(performanceData.map((r) => r.plataforma).filter(Boolean))
+    return Array.from(set)
+  }, [performanceData])
+
+  const currMergedCamp = useMemo(() => {
+    let res = filterRows(performanceData, dates.currentFrom, dates.currentTo)
+    if (platformFilter !== 'all') res = res.filter((r) => r.plataforma === platformFilter)
+    return res
+  }, [performanceData, dates, platformFilter])
+
   const currMergedOther = useMemo(
     () => filterRows(outrosCanaisData, dates.currentFrom, dates.currentTo),
     [outrosCanaisData, dates],
@@ -163,20 +206,50 @@ export default function Index() {
     const pastOther = filterRows(outrosCanaisData, dates.pastFrom, dates.pastTo)
 
     return {
-      currInvestimento: 0, // Field not requested in DB schema
-      pastInvestimento: 0,
+      currInvestimento: currMergedCamp.reduce((s, r) => s + (Number(r.investimento) || 0), 0),
+      pastInvestimento: pastCamp.reduce((s, r) => s + (Number(r.investimento) || 0), 0),
       currOrcamento: currMergedOther.reduce((s, r) => s + (Number(r.orcamentos_valor) || 0), 0),
       pastOrcamento: pastOther.reduce((s, r) => s + (Number(r.orcamentos_valor) || 0), 0),
       currLeads:
-        currMergedCamp.reduce((s, r) => s + (Number(r.leads) || 0), 0) +
+        currMergedCamp.reduce((s, r) => s + (Number(r.leads_base_rd) || 0), 0) +
         currMergedOther.reduce((s, r) => s + (Number(r.leads) || 0), 0),
       pastLeads:
-        pastCamp.reduce((s, r) => s + (Number(r.leads) || 0), 0) +
+        pastCamp.reduce((s, r) => s + (Number(r.leads_base_rd) || 0), 0) +
         pastOther.reduce((s, r) => s + (Number(r.leads) || 0), 0),
-      currPedidos: currMergedOther.reduce((s, r) => s + (Number(r.pedidos_qtd) || 0), 0),
-      pastPedidos: pastOther.reduce((s, r) => s + (Number(r.pedidos_qtd) || 0), 0),
+      currPedidos:
+        currMergedCamp.reduce((s, r) => s + (Number(r.pedidos_semana) || 0), 0) +
+        currMergedOther.reduce((s, r) => s + (Number(r.pedidos_qtd) || 0), 0),
+      pastPedidos:
+        pastCamp.reduce((s, r) => s + (Number(r.pedidos_semana) || 0), 0) +
+        pastOther.reduce((s, r) => s + (Number(r.pedidos_qtd) || 0), 0),
     }
   }, [currMergedCamp, currMergedOther, performanceData, outrosCanaisData, dates])
+
+  const handlePasteData = async (rows: string[][]) => {
+    if (!user) return
+    const visibleColIds = campCols.filter((c) => visibleCols[c.id] && !c.readOnly).map((c) => c.id)
+
+    const newRecords = rows.map((row) => {
+      const record: any = { usuario_id: user.id }
+      row.forEach((val, i) => {
+        if (i < visibleColIds.length) {
+          const colId = visibleColIds[i]
+          const colDef = campCols.find((c) => c.id === colId)
+          if (colDef?.type === 'number') {
+            let cleanVal = val.replace(/\./g, '').replace(',', '.')
+            record[colId] = Number(cleanVal.replace(/[^0-9.-]+/g, '')) || 0
+          } else {
+            record[colId] = val
+          }
+        }
+      })
+      return record
+    })
+
+    if (newRecords.length > 0) {
+      await insertBulkPerformance(newRecords)
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-[1600px] mx-auto animate-fade-in-up">
@@ -188,12 +261,14 @@ export default function Index() {
             serão salvas.
           </p>
         </div>
-        <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-600 mr-2">Período (Data Início):</span>
-          <DatePickerWithRange
-            date={filters.dateRange}
-            setDate={(date) => setFilters((prev) => ({ ...prev, dateRange: date }))}
-          />
+        <div className="flex items-center gap-2">
+          <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
+            <span className="text-sm font-medium text-slate-600 mr-2">Período:</span>
+            <DatePickerWithRange
+              date={filters.dateRange}
+              setDate={(date) => setFilters((prev) => ({ ...prev, dateRange: date }))}
+            />
+          </div>
         </div>
       </div>
 
@@ -234,13 +309,30 @@ export default function Index() {
           <div className="pt-4">
             <SectionHeader
               title="Performance de Campanhas"
-              cols={tableCols}
+              cols={campCols}
               visibleCols={visibleCols}
               setVisibleCols={setVisibleCols}
               onExpand={() => setExpandedState((prev) => ({ ...prev, camp: true }))}
+              extra={
+                <Select value={platformFilter} onValueChange={setPlatformFilter}>
+                  <SelectTrigger className="w-[140px] h-8 text-xs bg-white">
+                    <Filter className="w-3 h-3 mr-2" />
+                    <SelectValue placeholder="Plataforma" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas Plataformas</SelectItem>
+                    {platforms.map((p) => (
+                      <SelectItem key={p as string} value={p as string}>
+                        {p as string}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              }
             />
             <ComparisonTable
               data={currMergedCamp}
+              columns={campCols}
               onUpdate={updatePerformance}
               onBulkUpdate={updateBulkPerformance}
               onDelete={deletePerformance}
@@ -252,6 +344,8 @@ export default function Index() {
                   data_fim: format(new Date(), 'yyyy-MM-dd'),
                 })
               }
+              onReorder={(src, tgt) => reorderPerformance(src, tgt, currMergedCamp)}
+              onPasteData={handlePasteData}
               visibleCols={visibleCols}
             />
           </div>
@@ -294,6 +388,7 @@ export default function Index() {
           <div className="flex-1 overflow-hidden min-h-0 -mx-2 sm:-mx-0">
             <ComparisonTable
               data={currMergedCamp}
+              columns={campCols}
               onUpdate={updatePerformance}
               onBulkUpdate={updateBulkPerformance}
               onDelete={deletePerformance}
@@ -305,6 +400,8 @@ export default function Index() {
                   data_fim: format(new Date(), 'yyyy-MM-dd'),
                 })
               }
+              onReorder={(src, tgt) => reorderPerformance(src, tgt, currMergedCamp)}
+              onPasteData={handlePasteData}
               visibleCols={visibleCols}
               isExpanded={true}
             />
