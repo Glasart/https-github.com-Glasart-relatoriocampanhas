@@ -45,7 +45,7 @@ export interface ColumnDef {
   readOnly?: boolean
 }
 
-function EditableCell({
+const EditableCell = React.memo(function EditableCell({
   value,
   onSave,
   type = 'number',
@@ -165,7 +165,7 @@ function EditableCell({
       {displayValue || '-'}
     </div>
   )
-}
+})
 
 interface ComparisonTableProps {
   data: any[]
@@ -320,7 +320,10 @@ export function ComparisonTable({
               data.map((row) => (
                 <TableRow
                   key={row.id}
-                  className="hover:bg-slate-50/50"
+                  className={cn(
+                    'hover:bg-slate-50/50 transition-colors',
+                    !!onReorder && 'cursor-pointer',
+                  )}
                   data-state={selectedIds.has(row.id) ? 'selected' : undefined}
                   draggable={!!onReorder}
                   onDragStart={(e) => handleDragStart(e, row.id)}

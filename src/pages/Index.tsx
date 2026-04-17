@@ -23,9 +23,27 @@ const campCols: ColumnDef[] = [
   { id: 'cliques_base_ads', label: 'Cliques ADS', type: 'number' },
   { id: 'cliques_base_rd', label: 'Cliques RD', type: 'number' },
   { id: 'dif_cliques', label: 'Dif. Cliques', type: 'number', readOnly: true },
-  { id: 'ctr', label: 'CTR (%)', type: 'number', readOnly: true },
+  { id: 'ctr', label: 'CTR (%)', type: 'number', formatStyle: 'percent', readOnly: true },
+  { id: 'leads_base_planilhas_vendas', label: 'Leads Planilha', type: 'number' },
   { id: 'leads_base_rd', label: 'Leads RD', type: 'number' },
+  { id: 'cvl', label: 'CVL', type: 'number', formatStyle: 'percent', readOnly: true },
+  { id: 'dif_leads', label: 'Dif. Leads', type: 'number', readOnly: true },
+  { id: 'orcamentos_semana', label: 'Orçamentos', type: 'number' },
   { id: 'pedidos_semana', label: 'Pedidos', type: 'number' },
+  {
+    id: 'leads_orcamento',
+    label: 'Leads/Orç',
+    type: 'number',
+    formatStyle: 'percent',
+    readOnly: true,
+  },
+  {
+    id: 'orcamento_pedido',
+    label: 'Orç/Ped',
+    type: 'number',
+    formatStyle: 'percent',
+    readOnly: true,
+  },
 ]
 
 /* ===================== COMPONENT ===================== */
@@ -46,15 +64,16 @@ export default function Index() {
     insertBulkPerformance,
     updateOutrosCanais,
     addOutrosCanais,
+    reorderPerformance,
   } = usePerformanceData()
 
   /* ===================== DEBOUNCE ===================== */
 
   const debouncedUpdate = useMemo(
     () =>
-      debounce((id, data) => {
-        updatePerformance(id, data)
-      }, 400),
+      debounce((id: string, field: string, value: any) => {
+        updatePerformance(id, field, value)
+      }, 500),
     [updatePerformance],
   )
 
@@ -153,12 +172,13 @@ export default function Index() {
           <ComparisonTable
             data={currMergedCamp}
             columns={campCols}
-            onUpdate={(id, data) => debouncedUpdate(id, data)}
+            onUpdate={(id, field, value) => debouncedUpdate(id, field, value)}
             onBulkUpdate={updateBulkPerformance}
             onDelete={deletePerformance}
             onBulkDelete={deleteBulkPerformance}
             onAddRow={handleAddCamp}
             onPasteData={handlePasteData}
+            onReorder={(source, target) => reorderPerformance(source, target, currMergedCamp)}
           />
 
           <OtherChannelsTable
