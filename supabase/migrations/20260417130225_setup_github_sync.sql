@@ -2,7 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- Setup the cron job to call the edge function every 10 minutes
-DO $$
+DO $DO_BLOCK$
 BEGIN
   -- Remove existing job if it exists to be idempotent
   PERFORM cron.unschedule('sync-github-job');
@@ -20,7 +20,7 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
   -- Fallback if pg_cron is not available or user lacks permissions
   RAISE NOTICE 'Could not schedule cron job: %', SQLERRM;
-END $$;
+END $DO_BLOCK$;
 
 -- Insert initial sample data if empty
 DO $$
